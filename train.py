@@ -10,39 +10,34 @@ import torch.nn as nn
 from tensorboardX import SummaryWriter
 import torch.optim as optim
 import os
-from model.model import model_fn_decorator
-from model.nets import my_model
-from dataset.load_data import *
+from models import create_model, train_step
+from datasets import create_dataset
 from tqdm import tqdm
 from utils.loss_util import *
 from utils.common import *
 import lpips
 from config.config import args
 
-def train_epoch(args, TrainImgLoader, model, model_fn, optimizer, epoch, iters, lr_scheduler):
-    """
-    Training Loop for each epoch
-    """
+
+def train_epoch(args, TrainImgLoader, model, loss_fn, optimizer, device, epoch, iters, lr_scheduler):
     tbar = tqdm(TrainImgLoader)
     total_loss = 0
     lr = optimizer.state_dict()['param_groups'][0]['lr']
     for batch_idx, data in enumerate(tbar):
-        loss = model_fn(args, data, model, iters)
-        # backward and update
+        loss = train_step(args, data, model, loss_fn, device, iters)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         iters += 1
         total_loss += loss.item()
-        avg_train_loss = total_loss / (batch_idx+1)
+        avg_train_loss = total_loss / (batch_idx + 1)
         desc = 'Training  : Epoch %d, lr %.7f, Avg. Loss = %.5f' % (epoch, lr, avg_train_loss)
         tbar.set_description(desc)
         tbar.update()
     lr = optimizer.state_dict()['param_groups'][0]['lr']
-    # the learning rate is adjusted after each epoch
     lr_scheduler.step()
-
     return lr, avg_train_loss, iters
+
 
 def init():
     # Make dirs
@@ -70,8 +65,9 @@ def init():
 
     # summary writer
     logger = SummaryWriter(args.LOGS_DIR)
-    
+
     return logger, device
+
 
 def load_checkpoint(model, optimizer, load_epoch):
     load_dir = args.NETS_DIR + '/checkpoint' + '_' + '%06d' % load_epoch + '.tar'
@@ -86,15 +82,11 @@ def load_checkpoint(model, optimizer, load_epoch):
 
     return learning_rate, iters
 
+
 def main():
     logger, device = init()
     # create model
-    model = my_model(en_feature_num=args.EN_FEATURE_NUM,
-                     en_inter_num=args.EN_INTER_NUM,
-                     de_feature_num=args.DE_FEATURE_NUM,
-                     de_inter_num=args.DE_INTER_NUM,
-                     sam_number=args.SAM_NUMBER,
-                     ).to(device)
+    model = create_model(args).to(device)
     model._initialize_weights()
 
     # create optimizer
@@ -109,8 +101,6 @@ def main():
     # create learning rate scheduler
     lr_scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=args.T_0, T_mult=args.T_MULT, eta_min=args.ETA_MIN,
                                                last_epoch=args.LOAD_EPOCH - 1)
-    # create training function
-    model_fn = model_fn_decorator(loss_fn=loss_fn, device=device)
     # create dataset
     train_path = args.TRAIN_DATASET
     TrainImgLoader = create_dataset(args, data_path=train_path, mode='train')
@@ -119,8 +109,7 @@ def main():
     print("****start traininig!!!****")
     avg_train_loss = 0
     for epoch in range(args.LOAD_EPOCH + 1, args.EPOCHS + 1):
-        learning_rate, avg_train_loss, iters = train_epoch(args, TrainImgLoader, model, model_fn, optimizer, epoch,
-                                                           iters, lr_scheduler)
+        learning_rate, avg_train_loss, iters = train_epoch(args, TrainImgLoader, model, loss_fn, optimizer, device, epoch, iters, lr_scheduler)
         logger.add_scalar('Train/avg_loss', avg_train_loss, epoch)
         logger.add_scalar('Train/learning_rate', learning_rate, epoch)
 

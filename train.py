@@ -3,9 +3,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.distributed as dist
-import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.data.distributed import DistributedSampler
 from tensorboardX import SummaryWriter
 import torchvision
 from models import create_model
@@ -14,17 +12,35 @@ from losses import create_loss
 from tqdm import tqdm
 from utils.common import *
 import numpy as np
-import random
 from config.config import get_parser
 
 
-def train_step(args, data, model, loss_fn, device, iters):
+def train_step(args, data, model, loss_fn, optimizer_g, optimizer_d, device, iters):
     model.train()
     outputs = model(data)
     in_img = data['in_img']
     label = data['label']
-    loss = loss_fn(outputs, label)
-    if iters % args.SAVE_ITER == (args.SAVE_ITER - 1) and dist.get_rank() == 0:  # master만 저장
+
+    # ==== Generator update ====
+    loss_g = loss_fn(outputs, label)
+    optimizer_g.zero_grad()
+    loss_g.backward()
+    optimizer_g.step()
+
+    loss_d = 0.0
+    if args.USE_GAN:
+        for d_iter in range(getattr(args, 'D_ITERS', 1)):
+            # ==== Discriminator update ====
+            outputs_d = model(data)
+            loss_d_cur = loss_fn(outputs_d, label, d_loss=True)
+            optimizer_d.zero_grad()
+            loss_d_cur.backward()
+            optimizer_d.step()
+            loss_d += loss_d_cur.item()
+        loss_d /= getattr(args, 'D_ITERS', 1)  # 평균 (optional)
+
+    # Visualization (G output만 저장)
+    if iters % args.SAVE_ITER == (args.SAVE_ITER - 1) and dist.get_rank() == 0:
         in_save = in_img.detach().cpu()
         out_save = outputs[0].detach().cpu()
         gt_save = label.detach().cpu()
@@ -34,37 +50,38 @@ def train_step(args, data, model, loss_fn, device, iters):
             res_save,
             args.VISUALS_DIR + '/visual_x%04d_' % args.SAVE_ITER + '%05d' % save_number + '.jpg'
         )
-    return loss
+    return loss_g.item(), loss_d
 
 
-def train_epoch(args, TrainImgLoader, model, loss_fn, optimizer, device, epoch, iters, lr_scheduler):
+def train_epoch(args, TrainImgLoader, model, loss_fn, optimizer_g, optimizer_d, device, epoch, iters, lr_scheduler):
     model.train()
     tbar = tqdm(TrainImgLoader) if dist.get_rank() == 0 else TrainImgLoader
-    total_loss = 0
-    lr = optimizer.state_dict()['param_groups'][0]['lr']
+    total_loss_g = 0
+    total_loss_d = 0
+    lr = optimizer_g.state_dict()['param_groups'][0]['lr']
     for batch_idx, data in enumerate(tbar):
-        loss = train_step(args, data, model, loss_fn, device, iters)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        loss_g, loss_d = train_step(args, data, model, loss_fn, optimizer_g, optimizer_d, device, iters)
         iters += 1
-        total_loss += loss.item()
-        avg_train_loss = total_loss / (batch_idx + 1)
+        total_loss_g += loss_g
+        total_loss_d += loss_d
+        avg_train_loss_g = total_loss_g / (batch_idx + 1)
+        avg_train_loss_d = total_loss_d / (batch_idx + 1)
         if dist.get_rank() == 0:
-            desc = 'Training  : Epoch %d, lr %.7f, Avg. Loss = %.5f' % (epoch, lr, avg_train_loss)
+            desc = f"Epoch {epoch}, lr {lr:.7f}, G Loss={avg_train_loss_g:.5f}, D Loss={avg_train_loss_d:.5f}"
             tbar.set_description(desc)
             tbar.update()
-    lr = optimizer.state_dict()['param_groups'][0]['lr']
     lr_scheduler.step()
-    return lr, avg_train_loss, iters
+    return lr, avg_train_loss_g, avg_train_loss_d, iters
 
 
-def load_checkpoint(model, optimizer, load_epoch):
+def load_checkpoint(model, optimizer_g, optimizer_d, load_epoch):
     load_dir = args.NETS_DIR + '/checkpoint' + '_' + '%06d' % load_epoch + '.tar'
     print('Loading pre-trained checkpoint %s' % load_dir)
     ckpt = torch.load(load_dir, map_location='cpu')
     model.load_state_dict(ckpt['state_dict'])
-    optimizer.load_state_dict(ckpt['optimizer'])
+    optimizer_g.load_state_dict(ckpt['optimizer_g'])
+    if optimizer_d is not None and 'optimizer_d' in ckpt:
+        optimizer_d.load_state_dict(ckpt['optimizer_d'])
     learning_rate = ckpt['learning_rate']
     iters = ckpt['iters']
     print('Learning rate recorded from the checkpoint: %s' % str(learning_rate))
@@ -73,18 +90,14 @@ def load_checkpoint(model, optimizer, load_epoch):
 
 def main():
     args = get_parser()
-    # torchrun이 환경변수로 넘겨줌
     args.local_rank = int(os.environ.get('LOCAL_RANK', 0))
     rank = int(os.environ.get('RANK', 0))
     world_size = int(os.environ.get('WORLD_SIZE', 1))
 
     torch.cuda.set_device(args.local_rank)
     device = torch.device("cuda", args.local_rank)
-
-    # DDP 초기화
     dist.init_process_group('nccl')
 
-    # 디렉토리 등 각 프로세스가 만들어도 안전
     args.LOGS_DIR = os.path.join(args.SAVE_PREFIX, args.EXP_NAME, 'logs')
     args.NETS_DIR = os.path.join(args.SAVE_PREFIX, args.EXP_NAME, 'net_checkpoints')
     args.VISUALS_DIR = os.path.join(args.SAVE_PREFIX, args.EXP_NAME, 'train_visual')
@@ -99,50 +112,53 @@ def main():
     model = create_model(args).to(device)
     model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank)
 
-    optimizer = optim.Adam([{'params': model.parameters(), 'initial_lr': args.BASE_LR}], betas=(0.9, 0.999))
+    optimizer_g = optim.Adam([{'params': model.module.G.parameters(), 'initial_lr': args.BASE_LR}], betas=(0.9, 0.999))
+    optimizer_d = None
+    if args.USE_GAN:
+        optimizer_d = optim.Adam([{'params': model.module.D.parameters(), 'initial_lr': args.BASE_LR}], betas=(0.9, 0.999))
+
     learning_rate = args.BASE_LR
     iters = 0
     if args.LOAD_EPOCH:
-        learning_rate, iters = load_checkpoint(model, optimizer, args.LOAD_EPOCH)
+        learning_rate, iters = load_checkpoint(model, optimizer_g, optimizer_d, args.LOAD_EPOCH)
 
     loss_fn = create_loss(args).to(device)
 
     train_path = args.TRAIN_DATASET
 
-    sampler = DistributedSampler(TrainDataset, num_replicas=world_size, rank=rank, shuffle=True, drop_last=True)
-    TrainImgLoader = create_dataset(args, data_path=train_path, mode='train', device=device, sampler=sampler)
+    TrainImgLoader = create_dataset(args, data_path=train_path, mode='train', device=device)
 
     lr_scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
-        optimizer, T_0=args.T_0, T_mult=args.T_MULT, eta_min=args.ETA_MIN,
+        optimizer_g, T_0=args.T_0, T_mult=args.T_MULT, eta_min=args.ETA_MIN,
         last_epoch=args.LOAD_EPOCH - 1
     )
 
     print(f"**** Rank {rank} (local_rank {args.local_rank}) start training! ****")
     for epoch in range(args.LOAD_EPOCH + 1, args.EPOCHS + 1):
-        sampler.set_epoch(epoch)
-        learning_rate, avg_train_loss, iters = train_epoch(
-            args, TrainImgLoader, model, loss_fn, optimizer, device, epoch, iters, lr_scheduler
+        if hasattr(TrainImgLoader, 'sampler') and TrainImgLoader.sampler is not None:
+            TrainImgLoader.sampler.set_epoch(epoch)
+        lr, avg_loss_g, avg_loss_d, iters = train_epoch(
+            args, TrainImgLoader, model, loss_fn, optimizer_g, optimizer_d, device, epoch, iters, lr_scheduler
         )
         if rank == 0 and logger:
-            logger.add_scalar('Train/avg_loss', avg_train_loss, epoch)
-            logger.add_scalar('Train/learning_rate', learning_rate, epoch)
+            logger.add_scalar('Train/avg_loss_g', avg_loss_g, epoch)
+            logger.add_scalar('Train/avg_loss_d', avg_loss_d, epoch)
+            logger.add_scalar('Train/learning_rate', lr, epoch)
         if rank == 0:
             # Save the network per ten epoch
+            ckpt = {
+                'learning_rate': lr,
+                'iters': iters,
+                'optimizer_g': optimizer_g.state_dict(),
+                'state_dict': model.module.state_dict()
+            }
+            if args.USE_GAN:
+                ckpt['optimizer_d'] = optimizer_d.state_dict()
             if epoch % 10 == 0:
                 savefilename = args.NETS_DIR + '/checkpoint' + '_' + '%06d' % epoch + '.tar'
-                torch.save({
-                    'learning_rate': learning_rate,
-                    'iters': iters,
-                    'optimizer': optimizer.state_dict(),
-                    'state_dict': model.module.state_dict()
-                }, savefilename)
+                torch.save(ckpt, savefilename)
             savefilename = args.NETS_DIR + '/checkpoint' + '_' + 'latest.tar'
-            torch.save({
-                'learning_rate': learning_rate,
-                'iters': iters,
-                'optimizer': optimizer.state_dict(),
-                'state_dict': model.module.state_dict()
-            }, savefilename)
+            torch.save(ckpt, savefilename)
     dist.destroy_process_group()
 
 

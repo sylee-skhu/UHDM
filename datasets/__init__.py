@@ -9,7 +9,7 @@ import os
 import torch.utils.data as data
 
 
-def create_dataset(args, data_path, mode='train', device=None, sampler=None):
+def create_dataset(args, data_path, mode='train', device=None):
     if mode == 'demo':
         def _list_image_files_recursively(data_dir):
             file_list = []
@@ -48,15 +48,26 @@ def create_dataset(args, data_path, mode='train', device=None, sampler=None):
     else:
         raise NotImplementedError(f'Unrecognized DATA_TYPE: {args.DATA_TYPE}')
 
+    use_ddp = 'RANK' in os.environ and int(os.environ.get('WORLD_SIZE', 1)) > 1
+    if use_ddp:
+        sampler = data.distributed.DistributedSampler(
+            dataset,
+            num_replicas=int(os.environ['WORLD_SIZE']),
+            rank=int(os.environ['RANK']),
+            shuffle=True,
+            drop_last=True
+        )
+    else:
+        sampler = None
+
     data_loader = data.DataLoader(
         dataset,
         batch_size=args.BATCH_SIZE,
         shuffle=(sampler is None),
         num_workers=args.WORKER,
         drop_last=True,
-        sampler=sampler,  # DDP도 지원
+        sampler=sampler,
         pin_memory=True,
         collate_fn=(lambda batch: collate_to_device(batch, device)) if device is not None else None
     )
-
     return data_loader

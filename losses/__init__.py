@@ -10,6 +10,8 @@ def create_loss(args):
         )
     elif loss_name == 'myloss':
         loss = MyLoss(
+            lam_p=args.LAM_P,
+            lam_adv=args.LAM_ADV
         )
     else:
         raise NotImplementedError(f"Unknown loss: {loss_name}")

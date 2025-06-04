@@ -1,4 +1,5 @@
 from .esdnet import ESDNet
+from .unet import UNet
 from .mynet import MyNet
 
 
@@ -11,6 +12,12 @@ def create_model(args):
             de_feature_num=args.DE_FEATURE_NUM,
             de_inter_num=args.DE_INTER_NUM,
             sam_number=args.SAM_NUMBER,
+        )
+    elif model_name == 'unet':
+        model = UNet(
+            num_channels=args.IN_DIM,
+            num_features=args.FEAT_DIM,
+            num_out_channels=args.OUT_DIM,
         )
     elif model_name == 'mynet':
         model = MyNet(

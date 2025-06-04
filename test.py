@@ -14,13 +14,56 @@ from tensorboardX import SummaryWriter
 import torch.optim as optim
 import os
 
-from models import create_model, test_step   # ← 변경! (함수 분리 방식)
+from models import create_model
 from datasets import create_dataset
 from tqdm import tqdm
-from utils.loss_util import *
 from utils.common import *
 from config.config import args
 import logging
+
+
+def test_step(args, data, model, device, save_path, compute_metrics):
+    """
+    테스트 한 step (forward + metric 계산 + 결과 저장)
+    """
+    number = data['number']
+    in_img = data['in_img']
+    label = data['label']
+    b, c, h, w = in_img.size()
+    w_pad = (math.ceil(w/32)*32 - w) // 2
+    h_pad = (math.ceil(h/32)*32 - h) // 2
+    w_odd_pad = w_pad
+    h_odd_pad = h_pad
+    if w % 2 == 1:
+        w_odd_pad += 1
+    if h % 2 == 1:
+        h_odd_pad += 1
+
+    # shallow copy for safety
+    in_img_pad = img_pad(in_img, w_pad=w_pad, h_pad=h_pad, w_odd_pad=w_odd_pad, h_odd_pad=h_odd_pad)
+    data_mod = dict(data)
+    data_mod['in_img'] = in_img_pad
+
+    with torch.no_grad():
+        st = time.time()
+        out_1 = model(data_mod)[0]
+        cur_time = time.time()-st
+        if h_pad != 0:
+            out_1 = out_1[:, :, h_pad:-h_odd_pad, :]
+        if w_pad != 0:
+            out_1 = out_1[:, :, :, w_pad:-w_odd_pad]
+    # metric 계산
+    cur_lpips, cur_psnr, cur_ssim = 0.0, 0.0, 0.0
+    if args.EVALUATION_METRIC:
+        cur_lpips, cur_psnr, cur_ssim = compute_metrics.compute(out_1, label)
+    # save images
+    if args.SAVE_IMG:
+        out_save = out_1.detach().cpu()
+        torchvision.utils.save_image(
+            out_save,
+            save_path + '/' + 'test_%s' % number[0] + '.%s' % args.SAVE_IMG
+        )
+    return cur_psnr, cur_ssim, cur_lpips, cur_time
 
 
 def test(args, TestImgLoader, model, device, save_path, compute_metrics):

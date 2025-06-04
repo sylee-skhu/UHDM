@@ -8,16 +8,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class ESDNet(nn.Module):  # 기존 my_model → ESDNet(혹은 원하는 네이밍)
+class ESDNet(nn.Module):
     def __init__(self, en_feature_num, en_inter_num, de_feature_num, de_inter_num, sam_number=1):
         super().__init__()
         self.encoder = Encoder(feature_num=en_feature_num, inter_num=en_inter_num, sam_number=sam_number)
         self.decoder = Decoder(en_num=en_feature_num, feature_num=de_feature_num, inter_num=de_inter_num, sam_number=sam_number)
 
     def forward(self, x):
+        x = x['in_img']
         y_1, y_2, y_3 = self.encoder(x)
         out_1, out_2, out_3 = self.decoder(y_1, y_2, y_3)
-        return out_1, out_2, out_3
+        return [out_1, out_2, out_3]
 
     def _initialize_weights(self):
         for m in self.modules():

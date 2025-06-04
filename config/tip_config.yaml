@@ -1,15 +1,15 @@
 GENERAL:
-  GPU_ID: 0
+  GPU_ID: 0 # only applicable for testing or demo
   SEED: 123
   WORKER: 8
-  SAVE_PREFIX: './out_dir/tip'
+  SAVE_PREFIX: '.out_dir/tip'
   EXP_NAME: 'exp'
 
 DATA:
   DATA_TYPE: TIP # Please specify the type of the dataset (select from AIM/UHDM/FHDMi/TIP)
-  TRAIN_DATASET: './tip_data/trainData' # The training data path, e.g., './uhdm_data/Train'
-  TEST_DATASET: './tip_data/testData' # The test data path, e.g., './uhdm_data/Test'
-  DEMO_DATASET: './tip_data/demoData' # The demo data path, e.g., './uhdm_data/Demo'
+  TRAIN_DATASET: './data_tip/trainData' # The training data path, e.g., './data_tip/trainData'
+  TEST_DATASET: './data_tip/testData' # The test data path, e.g., './data_tip/testData'
+  DEMO_DATASET: './data_tip/demoData' # The demo data path, e.g., './data_tip/demoData'
 
 MODEL:
 # ESDNet configuration
@@ -23,14 +23,18 @@ MODEL:
 #  MODEL_NAME: 'MyNet' # The model name, e.g., MyNet, MyNet-L
 
 TRAIN:
-  BATCH_SIZE: 8
+  BATCH_SIZE: 24
   #LOADER: crop # The loading way for training data, e.g., crop, resize, default; see ./dataset/load_data.py
   #CROP_SIZE: 768 # Set the crop size if LOADER==crop
   #RESIZE_SIZE: 384 # Set the resizing size if LOADER==crop
   SAVE_ITER: 500 # Save training images/results at each SAVE_ITER*n iter
   LOAD_EPOCH: False # If specify it, loading the corresponding model for resuming training
+# VGGPerceptual configuration
+  LOSS_NAME: 'VGGPerceptual'
   LAM: 1 # The loss weight for L1 loss
   LAM_P: 1 # The loss weight for perceptual loss
+# MyLoss configuration
+#  LOSS_NAME: 'MyLoss'
 
 TEST:
   TEST_EPOCH: 70 # Input 'auto' for loading the latest model

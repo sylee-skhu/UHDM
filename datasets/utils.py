@@ -5,6 +5,21 @@ import torch
 import torch.utils.data as data
 
 
+def collate_to_device(batch, device):
+    """
+    배치가 [{'in_img':..., 'label':...}, ...] 꼴로 오면,
+    각 항목을 모아서 device에 올려줌
+    """
+    batch_dict = {}
+    for key in batch[0]:
+        vals = [d[key] for d in batch]
+        if torch.is_tensor(vals[0]):
+            batch_dict[key] = torch.stack(vals).to(device, non_blocking=True)
+        else:
+            batch_dict[key] = vals
+    return batch_dict
+
+
 def default_loader(path_set=[]):
     from PIL import Image
     from torchvision import transforms

@@ -16,7 +16,8 @@ class multi_VGGPerceptualLoss(torch.nn.Module):
         self.lam = lam
         self.lam_p = lam_p
 
-    def forward(self, out1, out2, out3, gt1, feature_layers=[2]):
+    def forward(self, outputs, gt1, feature_layers=[2]):
+        out1, out2, out3 = outputs
         gt2 = F.interpolate(gt1, scale_factor=0.5, mode='bilinear', align_corners=False)
         gt3 = F.interpolate(gt1, scale_factor=0.25, mode='bilinear', align_corners=False)
 

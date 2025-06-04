@@ -193,6 +193,6 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
-out_dir/
-tip_data
-uhdm_data
+.out_dir/
+data_tip
+data_uhdm

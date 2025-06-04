@@ -3,13 +3,14 @@ from .fhdmi import fhdmi_data_loader
 from .aim import aim_data_loader
 from .tip import tip_data_loader
 from .demo import demo_data_loader
+from .utils import collate_to_device
 
 import os
 import torch.utils.data as data
 
 
-def create_dataset(args, data_path, mode='train'):
-    if args.mode == 'demo':
+def create_dataset(args, data_path, mode='train', device=None, sampler=None):
+    if mode == 'demo':
         def _list_image_files_recursively(data_dir):
             file_list = []
             for home, dirs, files in os.walk(data_dir):
@@ -46,7 +47,18 @@ def create_dataset(args, data_path, mode='train'):
         dataset = aim_data_loader(args, aim_files, mode=mode)
     else:
         raise NotImplementedError(f'Unrecognized DATA_TYPE: {args.DATA_TYPE}')
+    if return_dataset:
+        return dataset
+
     data_loader = data.DataLoader(
-        dataset, batch_size=args.BATCH_SIZE, shuffle=True, num_workers=args.WORKER, drop_last=True
+        dataset,
+        batch_size=args.BATCH_SIZE,
+        shuffle=(sampler is None),
+        num_workers=args.WORKER,
+        drop_last=True,
+        sampler=sampler,  # DDP도 지원
+        pin_memory=True,
+        collate_fn=(lambda batch: collate_to_device(batch, device)) if device is not None else None
     )
+
     return data_loader

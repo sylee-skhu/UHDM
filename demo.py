@@ -13,14 +13,62 @@ import torch.nn as nn
 from tensorboardX import SummaryWriter
 import torch.optim as optim
 import os
-from models import create_model, demo_step         # <-- 변경!
-from datasets.utils import default_toTensor              # <-- util import
+from models import create_model
+from datasets import create_dataset
 from tqdm import tqdm
-from utils.loss_util import *
 from utils.common import *
 from config.config import args
 from PIL import Image
 from PIL import ImageFile
+
+
+def demo_step(args, data, model, save_path, device):
+    """
+    - args: config/arguments
+    - data: DataLoader에서 받은 {'in_img': tensor, 'number': filename 등}
+    - model: 학습된 모델 (eval 모드로 호출)
+    - save_path: 결과 저장 경로
+    - device: 'cuda' 또는 'cpu'
+    """
+    model.eval()
+    in_img = data['in_img']
+    number = data['number']
+    b, c, h, w = in_img.size()
+
+    # pad image such that the resolution is a multiple of 32
+    w_pad = (math.ceil(w/32)*32 - w) // 2
+    h_pad = (math.ceil(h/32)*32 - h) // 2
+    w_odd_pad = w_pad
+    h_odd_pad = h_pad
+    if w % 2 == 1:
+        w_odd_pad += 1
+    if h % 2 == 1:
+        h_odd_pad += 1
+
+    # shallow copy for safety
+    in_img_pad = img_pad(in_img, w_pad=w_pad, h_pad=h_pad, w_odd_pad=w_odd_pad, h_odd_pad=h_odd_pad)
+    data_mod = dict(data)
+    data_mod['in_img'] = in_img_pad
+
+    with torch.no_grad():
+        out_1 = model(data_mod)[0]
+        # crop padding
+        if h_pad != 0:
+            out_1 = out_1[:, :, h_pad:-h_odd_pad, :]
+        if w_pad != 0:
+            out_1 = out_1[:, :, :, w_pad:-w_odd_pad]
+
+    # save output image
+    if args.SAVE_IMG:
+        out_save = out_1.detach().cpu()
+        # number은 이미지 이름/번호. list인지 str인지 확인!
+        if isinstance(number, (list, tuple)):
+            filename = number[0]
+        else:
+            filename = number
+        save_ext = getattr(args, "SAVE_IMG", "png")
+        out_file = os.path.join(save_path, f'test_{filename}.{save_ext}')
+        torchvision.utils.save_image(out_save, out_file)
 
 
 def demo(args, TestImgLoader, model, save_path, device):

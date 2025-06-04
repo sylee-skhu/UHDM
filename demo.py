@@ -135,7 +135,6 @@ def main():
     device = init()
     # load model
     model = create_model(args).to(device)
-    model._initialize_weights()
 
     # load checkpoint
     load_path, save_path, log_path = load_checkpoint(model)

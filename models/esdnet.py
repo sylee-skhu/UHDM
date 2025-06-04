@@ -13,6 +13,7 @@ class ESDNet(nn.Module):
         super().__init__()
         self.encoder = Encoder(feature_num=en_feature_num, inter_num=en_inter_num, sam_number=sam_number)
         self.decoder = Decoder(en_num=en_feature_num, feature_num=de_feature_num, inter_num=de_inter_num, sam_number=sam_number)
+        self._initialize_weights()
 
     def forward(self, x):
         x = x['in_img']

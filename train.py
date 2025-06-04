@@ -106,7 +106,6 @@ def main():
         torch.backends.cudnn.benchmark = True
 
     model = create_model(args).to(device)
-    model._initialize_weights()
     model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank)
 
     optimizer = optim.Adam([{'params': model.parameters(), 'initial_lr': args.BASE_LR}], betas=(0.9, 0.999))

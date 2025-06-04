@@ -153,6 +153,20 @@ def mkdir(path):
         os.makedirs(path)
 
 
+def set_logging(log_path):
+    logger = logging.getLogger()
+    logger.setLevel(level=logging.DEBUG)
+    formatter = logging.Formatter('%(message)s')
+    file_handler = logging.FileHandler(log_path, mode='w')
+    file_handler.setLevel(level=logging.INFO)
+    file_handler.setFormatter(formatter)
+    stream_handler = logging.StreamHandler()
+    stream_handler.setLevel(logging.WARNING)
+    stream_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    logger.addHandler(stream_handler)
+
+
 def set_seed(seed=0, deterministic=True):
     random.seed(seed)
     np.random.seed(seed)
@@ -189,6 +203,19 @@ def calculate_cost(model, input_size=(1, 3, 224, 224)):
     macs, params = profile(model, inputs=(input_, ))
     macs, params = clever_format([macs, params], "%.3f")
     logging.warning("MACs:" + macs + ", Params:" + params)
+
+
+def pad_and_replace(data, pad_multiple=32):
+    data_mod = dict(data)
+    in_img = data['in_img']
+    h, w = in_img.shape[-2:]
+    w_pad = (math.ceil(w/pad_multiple)*pad_multiple - w) // 2
+    h_pad = (math.ceil(h/pad_multiple)*pad_multiple - h) // 2
+    w_odd_pad = w_pad + (w % 2)
+    h_odd_pad = h_pad + (h % 2)
+    in_img_pad = img_pad(in_img, w_pad, h_pad, w_odd_pad, h_odd_pad)
+    data_mod['in_img'] = in_img_pad
+    return data_mod, h_pad, h_odd_pad, w_pad, w_odd_pad
 
 
 def img_pad(x, w_pad, h_pad, w_odd_pad, h_odd_pad):

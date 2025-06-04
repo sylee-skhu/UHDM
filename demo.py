@@ -30,25 +30,9 @@ def demo_step(args, data, model, save_path, device):
     - save_path: 결과 저장 경로
     - device: 'cuda' 또는 'cpu'
     """
-    model.eval()
-    in_img = data['in_img']
     number = data['number']
-    b, c, h, w = in_img.size()
 
-    # pad image such that the resolution is a multiple of 32
-    w_pad = (math.ceil(w/32)*32 - w) // 2
-    h_pad = (math.ceil(h/32)*32 - h) // 2
-    w_odd_pad = w_pad
-    h_odd_pad = h_pad
-    if w % 2 == 1:
-        w_odd_pad += 1
-    if h % 2 == 1:
-        h_odd_pad += 1
-
-    # shallow copy for safety
-    in_img_pad = img_pad(in_img, w_pad=w_pad, h_pad=h_pad, w_odd_pad=w_odd_pad, h_odd_pad=h_odd_pad)
-    data_mod = dict(data)
-    data_mod['in_img'] = in_img_pad
+    data_mod, h_pad, h_odd_pad, w_pad, w_odd_pad = pad_and_replace(data)
 
     with torch.no_grad():
         out_1 = model(data_mod)[0]
@@ -108,20 +92,6 @@ def load_checkpoint(model):
     return load_path, save_path, log_path
 
 
-def set_logging(log_path):
-    logger = logging.getLogger()
-    logger.setLevel(level=logging.DEBUG)
-    formatter = logging.Formatter('%(message)s')
-    file_handler = logging.FileHandler(log_path, mode='w')
-    file_handler.setLevel(level=logging.INFO)
-    file_handler.setFormatter(formatter)
-    stream_handler = logging.StreamHandler()
-    stream_handler.setLevel(logging.WARNING)
-    stream_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-    logger.addHandler(stream_handler)
-
-
 def main():
     device = init()
     # load model
@@ -140,7 +110,7 @@ def main():
     # Create dataset
     test_path = args.DEMO_DATASET
     args.BATCH_SIZE = 1
-    DemoImgLoader = create_dataset(args, data_path=test_path, mode='demo')
+    DemoImgLoader = create_dataset(args, data_path=test_path, mode='demo', device=device)
 
     # test demo
     demo(args, DemoImgLoader, model, save_path, device)

@@ -110,16 +110,7 @@ def init():
     args.NETS_DIR = os.path.join(args.SAVE_PREFIX, args.EXP_NAME, 'net_checkpoints')
     os.environ["CUDA_VISIBLE_DEVICES"] = "%d" % args.GPU_ID
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    random.seed(args.SEED)
-    np.random.seed(args.SEED)
-    torch.manual_seed(args.SEED)
-    torch.cuda.manual_seed_all(args.SEED)
-    if args.SEED == 0:
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-    else:
-        torch.backends.cudnn.deterministic = False
-        torch.backends.cudnn.benchmark = True
+    set_seed(args.SEED)
     return device
 
 

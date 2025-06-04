@@ -94,16 +94,7 @@ def main():
         mkdir(args.VISUALS_DIR)
     logger = SummaryWriter(args.LOGS_DIR) if rank == 0 else None
 
-    random.seed(args.SEED)
-    np.random.seed(args.SEED)
-    torch.manual_seed(args.SEED)
-    torch.cuda.manual_seed_all(args.SEED)
-    if args.SEED == 0:
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-    else:
-        torch.backends.cudnn.deterministic = False
-        torch.backends.cudnn.benchmark = True
+    set_seed(args.SEED)
 
     model = create_model(args).to(device)
     model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank)

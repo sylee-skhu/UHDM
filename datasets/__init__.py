@@ -47,8 +47,6 @@ def create_dataset(args, data_path, mode='train', device=None, sampler=None):
         dataset = aim_data_loader(args, aim_files, mode=mode)
     else:
         raise NotImplementedError(f'Unrecognized DATA_TYPE: {args.DATA_TYPE}')
-    if return_dataset:
-        return dataset
 
     data_loader = data.DataLoader(
         dataset,

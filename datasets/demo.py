@@ -2,7 +2,7 @@
 import os
 import torch.utils.data as data
 from PIL import Image, ImageFile
-from datasets.utils import default_toTensor
+from .utils import default_toTensor
 
 
 class demo_data_loader(data.Dataset):

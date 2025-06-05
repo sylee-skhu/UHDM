@@ -68,6 +68,6 @@ def create_dataset(args, data_path, mode='train', device=None):
         drop_last=True,
         sampler=sampler,
         pin_memory=True,
-        collate_fn=(lambda batch: collate_to_device(batch, device)) if device is not None else None
+        collate_fn=None
     )
     return data_loader

@@ -55,16 +55,12 @@ class MyNet(nn.Module):
         self._initialize_weights()
 
     def forward(self, data, mode="G"):
-        x = data['in_img']
-        outputs = self.G(x)
-        x = data['in_img']
+        outputs = self.G(data)
+        out_full = outputs[0]
         real = data['label']
-        outs = self.G({'in_img': x})  # [out_full, out_half, out_quarter]
-        out_full = outs[0]
-
         D_real = self.D(real)
         D_fake = self.D(out_full)
-        return outs + [D_real, D_fake]  # [out_full, out_half, out_quarter, D_real, D_fake]
+        return outputs + [D_real, D_fake]  # [out_full, out_half, out_quarter, D_real, D_fake]
 
     def _initialize_weights(self):
         pass

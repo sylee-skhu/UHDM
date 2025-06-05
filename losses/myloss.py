@@ -42,11 +42,6 @@ class VGGPerceptualLoss(nn.Module):
 
 
 class MyLoss(nn.Module):
-    """
-    outputs: [out_full, out_half, out_quarter]
-    targets: gt_full
-    adversarial_loss: (optional) Hinge Loss 버전
-    """
 
     def __init__(self, lam_p=1.0, lam_adv=0.01):
         super().__init__()

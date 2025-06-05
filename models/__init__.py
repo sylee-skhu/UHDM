@@ -21,8 +21,8 @@ def create_model(args):
         )
     elif model_name == 'mynet':
         model = MyNet(
-            num_channels=args.EN_FEATURE_NUM,
-            num_features=args.EN_FEATURE_NUM,
+            num_channels=args.CH_DIM,
+            num_features=args.FEAT_DIM,
         )
     else:
         raise NotImplementedError(f"Unknown model: {model_name}")

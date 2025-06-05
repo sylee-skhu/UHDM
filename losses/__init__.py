@@ -1,4 +1,5 @@
 from .vggperceptual import multi_VGGPerceptualLoss
+from .myloss import MyLoss
 
 
 def create_loss(args):

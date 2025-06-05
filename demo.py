@@ -1,51 +1,38 @@
-from datetime import datetime
-import logging
-import lpips
-import numpy as np
-import torch
-import argparse
-import cv2
-import torch.utils.data as data
-import torchvision
-import random
-import torch.nn.functional as F
-import torch.nn as nn
-from tensorboardX import SummaryWriter
-import torch.optim as optim
 import os
+import torch
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+import torchvision
+from datetime import datetime
+from tqdm import tqdm
 from models import create_model
 from datasets import create_dataset
-from tqdm import tqdm
 from utils.common import *
-from config.config import args
-from PIL import Image
-from PIL import ImageFile
+from config.config import get_parser
+import logging
 
 
-def demo_step(args, data, model, save_path, device):
-    """
-    - args: config/arguments
-    - data: DataLoader에서 받은 {'in_img': tensor, 'number': filename 등}
-    - model: 학습된 모델 (eval 모드로 호출)
-    - save_path: 결과 저장 경로
-    - device: 'cuda' 또는 'cpu'
-    """
+def demo_step(args, data, model, device, save_path):
     number = data['number']
 
     data_mod, h_pad, h_odd_pad, w_pad, w_odd_pad = pad_and_replace(data)
-
     with torch.no_grad():
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        start.record()
         out_1 = model(data_mod)[0]
-        # crop padding
+        end.record()
+        torch.cuda.synchronize()
+        cur_time = start.elapsed_time(end) / 1000.0  # ms → sec
+
         if h_pad != 0:
             out_1 = out_1[:, :, h_pad:-h_odd_pad, :]
         if w_pad != 0:
             out_1 = out_1[:, :, :, w_pad:-w_odd_pad]
 
-    # save output image
-    if args.SAVE_IMG:
+    # save output image (마스터만 저장)
+    if args.SAVE_IMG and dist.get_rank() == 0:
         out_save = out_1.detach().cpu()
-        # number은 이미지 이름/번호. list인지 str인지 확인!
         if isinstance(number, (list, tuple)):
             filename = number[0]
         else:
@@ -53,67 +40,106 @@ def demo_step(args, data, model, save_path, device):
         save_ext = getattr(args, "SAVE_IMG", "png")
         out_file = os.path.join(save_path, f'test_{filename}.{save_ext}')
         torchvision.utils.save_image(out_save, out_file)
+        logging.info(f"Saved: {out_file}")
+
+    return cur_time
 
 
-def demo(args, TestImgLoader, model, save_path, device):
-    tbar = tqdm(TestImgLoader)
+def demo(args, DemoImgLoader, model, device, save_path):
+    tbar = tqdm(DemoImgLoader) if dist.get_rank() == 0 else DemoImgLoader
+    total_time = 0
     for batch_idx, data in enumerate(tbar):
+        data = {k: v.to(device, non_blocking=True) if torch.is_tensor(v) else v for k, v in data.items()}
         model.eval()
-        demo_step(args, data, model, save_path, device)   # <-- 변경!
-        desc = 'Test demo'
-        tbar.set_description(desc)
-        tbar.update()
+        cur_time = demo_step(args, data, model, device, save_path)
+        if batch_idx > 5:  # warm-up 패스
+            total_time += cur_time
+            avg_time = total_time / (batch_idx - 5)
+        else:
+            avg_time = 0.0
+
+        if dist.get_rank() == 0:
+            desc = f"Demo: Avg. TIME={avg_time:.4f}s"
+            tbar.set_description(desc)
+            tbar.update()
+            logging.info('TIME %.4f s', cur_time)
+    if dist.get_rank() == 0:
+        logging.warning('Avg. TIME=%.4f s', avg_time)
 
 
-def init():
-    args.TEST_RESULT_DIR = os.path.join(args.SAVE_PREFIX, args.EXP_NAME, 'test_result')
-    mkdir(args.TEST_RESULT_DIR)
-    args.NETS_DIR = os.path.join(args.SAVE_PREFIX, args.EXP_NAME, 'net_checkpoints')
-    os.environ["CUDA_VISIBLE_DEVICES"] = "%d" % args.GPU_ID
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    set_seed(args.SEED, deterministic=False)
-    return device
-
-
-def load_checkpoint(model):
+def load_checkpoint(args, model):
     if args.LOAD_PATH:
         load_path = args.LOAD_PATH
-        save_path = args.TEST_RESULT_DIR + '/customer'
-        log_path = args.TEST_RESULT_DIR + '/customer_result.log'
+        save_path = os.path.join(args.TEST_RESULT_DIR, 'customer')
+        log_path = os.path.join(args.TEST_RESULT_DIR, 'customer_result.log')
     else:
-        print('Please specify a checkpoint path in the config file!!!')
-        raise NotImplementedError
-    mkdir(save_path)
+        raise ValueError('Please specify a checkpoint path in the config file!')
+    if dist.get_rank() == 0:
+        mkdir(save_path)
     if load_path.endswith('.pth'):
         model_state_dict = torch.load(load_path)
     else:
         model_state_dict = torch.load(load_path)['state_dict']
-    model.load_state_dict(model_state_dict)
+    if isinstance(model, torch.nn.parallel.DistributedDataParallel):
+        model.module.load_state_dict(model_state_dict)
+    else:
+        model.load_state_dict(model_state_dict)
     return load_path, save_path, log_path
 
 
+def set_logging(log_path):
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(message)s')
+    file_handler = logging.FileHandler(log_path, mode='w')
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
+    stream_handler = logging.StreamHandler()
+    stream_handler.setLevel(logging.WARNING)
+    stream_handler.setFormatter(formatter)
+    if logger.hasHandlers():
+        logger.handlers.clear()
+    logger.addHandler(file_handler)
+    logger.addHandler(stream_handler)
+
+
 def main():
-    device = init()
-    # load model
+    args = get_parser()
+    args.local_rank = int(os.environ.get('LOCAL_RANK', 0))
+    rank = int(os.environ.get('RANK', 0))
+    world_size = int(os.environ.get('WORLD_SIZE', 1))
+
+    torch.cuda.set_device(args.local_rank)
+    device = torch.device("cuda", args.local_rank)
+    dist.init_process_group('nccl')
+
+    args.TEST_RESULT_DIR = os.path.join(args.SAVE_PREFIX, args.EXP_NAME, 'test_result')
+    args.NETS_DIR = os.path.join(args.SAVE_PREFIX, args.EXP_NAME, 'net_checkpoints')
+    if rank == 0:
+        mkdir(args.TEST_RESULT_DIR)
+
+    set_seed(args.SEED)
+
+    # DataLoader
+    demo_path = args.DEMO_DATASET
+    args.BATCH_SIZE = 1
+    DemoImgLoader = create_dataset(args, data_path=demo_path, mode='demo', device=device)
+
+    # Model
     model = create_model(args).to(device)
+    model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank)
+    load_path, save_path, log_path = load_checkpoint(args, model)
 
-    # load checkpoint
-    load_path, save_path, log_path = load_checkpoint(model)
-
-    # set logging for recording information or metrics
     set_logging(log_path)
     logging.warning(datetime.now())
-    logging.warning('load model from %s' % load_path)
-    logging.warning('save image results to %s' % save_path)
-    logging.warning('save logger to %s' % log_path)
+    logging.warning('load model from %s', load_path)
+    logging.warning('save image results to %s', save_path)
+    logging.warning('save logger to %s', log_path)
 
-    # Create dataset
-    test_path = args.DEMO_DATASET
-    args.BATCH_SIZE = 1
-    DemoImgLoader = create_dataset(args, data_path=test_path, mode='demo', device=device)
+    # Demo (이미지 저장/시간 측정 등)
+    demo(args, DemoImgLoader, model, device, save_path)
 
-    # test demo
-    demo(args, DemoImgLoader, model, save_path, device)
+    dist.destroy_process_group()
 
 
 if __name__ == '__main__':

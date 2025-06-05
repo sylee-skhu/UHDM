@@ -60,6 +60,7 @@ def train_epoch(args, TrainImgLoader, model, loss_fn, optimizer_g, optimizer_d, 
     total_loss_d = 0
     lr = optimizer_g.state_dict()['param_groups'][0]['lr']
     for batch_idx, data in enumerate(tbar):
+        data = {k: v.to(device, non_blocking=True) if torch.is_tensor(v) else v for k, v in data.items()}
         loss_g, loss_d = train_step(args, data, model, loss_fn, optimizer_g, optimizer_d, device, iters)
         iters += 1
         total_loss_g += loss_g
@@ -110,12 +111,14 @@ def main():
     set_seed(args.SEED)
 
     model = create_model(args).to(device)
-    model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank)
+    model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank, find_unused_parameters=args.USE_GAN)
 
-    optimizer_g = optim.Adam([{'params': model.module.G.parameters(), 'initial_lr': args.BASE_LR}], betas=(0.9, 0.999))
-    optimizer_d = None
     if args.USE_GAN:
+        optimizer_g = optim.Adam([{'params': model.module.G.parameters(), 'initial_lr': args.BASE_LR}], betas=(0.9, 0.999))
         optimizer_d = optim.Adam([{'params': model.module.D.parameters(), 'initial_lr': args.BASE_LR}], betas=(0.9, 0.999))
+    else:
+        optimizer_g = optim.Adam([{'params': model.module.parameters(), 'initial_lr': args.BASE_LR}], betas=(0.9, 0.999))
+        optimizer_d = None
 
     learning_rate = args.BASE_LR
     iters = 0

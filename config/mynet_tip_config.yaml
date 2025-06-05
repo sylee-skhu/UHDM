@@ -1,3 +1,5 @@
+# Avg. LPIPS=0.0871, PSNR=29.2830, SSIM=0.9103
+
 GENERAL:
   GPU_ID: 0 # only applicable for testing or demo
   SEED: 123
@@ -25,10 +27,13 @@ MODEL:
   # FEAT_DIM: 64
   # OUT_DIM: 3
 # MyNet configuration
-#  MODEL_NAME: 'MyNet' # The model name, e.g., MyNet, MyNet-L
+  MODEL_NAME: 'MyNet' # The model name, e.g., MyNet, MyNet-L
+  CH_DIM: 3
+  FEAT_DIM: 64
+  
 
 TRAIN:
-  USE_GAN: False
+  USE_GAN: True
   D_ITERS: 1
   BATCH_SIZE: 24
   #LOADER: crop # The loading way for training data, e.g., crop, resize, default; see ./dataset/load_data.py
@@ -37,19 +42,19 @@ TRAIN:
   SAVE_ITER: 500 # Save training images/results at each SAVE_ITER*n iter
   LOAD_EPOCH: False # If specify it, loading the corresponding model for resuming training
 # VGGPerceptual configuration
-  LOSS_NAME: 'VGGPerceptual'
-  LAM: 1 # The loss weight for L1 loss
-  LAM_P: 1 # The loss weight for perceptual loss
+  # LOSS_NAME: 'VGGPerceptual'
+  # LAM: 1 # The loss weight for L1 loss
+  # LAM_P: 1 # The loss weight for perceptual loss
 # MyLoss configuration
-  # LOSS_NAME: 'MyLoss'
-  # LAM_P: 2
-  # LAM_ADV: 0.5
+  LOSS_NAME: 'MyLoss'
+  LAM_P: 2
+  LAM_ADV: 0.5
 
 TEST:
-  TEST_EPOCH: 70 # Input 'auto' for loading the latest model
+  TEST_EPOCH: 'auto' # Input 'auto' for loading the latest model
   SAVE_IMG: False # The file type (e.g., jpg, png) for saving the output image; set False to avoid saving
   # LOAD_PATH: False # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated
-  LOAD_PATH: './out_dir/tip/exp/net_checkpoints/checkpoint_latest.tar' # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated
+  LOAD_PATH: '.out_dir/tip/mynet/net_checkpoints/checkpoint_latest.tar' # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated
   EVALUATION_METRIC: True # If True, calculate metrics
   EVALUATION_TIME: False # If True, calculate processing time per image; EVALUATION_METRIC will be deprecated for accurate statistics
   EVALUATION_COST: False #If True, calculate MACs and Parameters number

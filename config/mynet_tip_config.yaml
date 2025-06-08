@@ -1,11 +1,12 @@
-# Avg. LPIPS=0.0871, PSNR=29.2830, SSIM=0.9103
+# default: Avg. LPIPS=0.0769, PSNR=27.4572, SSIM=0.8967
+# FRB(skip): Avg. LPIPS=0.0878, PSNR=27.6970, SSIM=0.8998
+# FULL(skip+bottleneck):
 
 GENERAL:
-  GPU_ID: 0 # only applicable for testing or demo
   SEED: 123
   WORKER: 8
   SAVE_PREFIX: '.out_dir/tip'
-  EXP_NAME: 'exp'
+  EXP_NAME: 'FULL'
 
 DATA:
   DATA_TYPE: TIP # Please specify the type of the dataset (select from AIM/UHDM/FHDMi/TIP)
@@ -15,12 +16,12 @@ DATA:
 
 MODEL:
 # ESDNet configuration
-  MODEL_NAME: 'ESDNet' # The model name, e.g., ESDNet, ESDNet-L
-  EN_FEATURE_NUM: 48 # The initial channel number of dense blocks of encoder
-  EN_INTER_NUM: 32 # The growth rate (intermediate channel number) of dense blocks of encoder
-  DE_FEATURE_NUM: 64 # The initial channel number of dense blocks of decoder
-  DE_INTER_NUM: 32 # The growth rate (intermediate channel number) of dense blocks of decoder
-  SAM_NUMBER: 1 # The number of SAM for each encoder or decoder level; set 1 for our ESDNet, and 2 for ESDNet-L
+  # MODEL_NAME: 'ESDNet' # The model name, e.g., ESDNet, ESDNet-L
+  # EN_FEATURE_NUM: 48 # The initial channel number of dense blocks of encoder
+  # EN_INTER_NUM: 32 # The growth rate (intermediate channel number) of dense blocks of encoder
+  # DE_FEATURE_NUM: 64 # The initial channel number of dense blocks of decoder
+  # DE_INTER_NUM: 32 # The growth rate (intermediate channel number) of dense blocks of decoder
+  # SAM_NUMBER: 1 # The number of SAM for each encoder or decoder level; set 1 for our ESDNet, and 2 for ESDNet-L
 # UNet configuration
   # MODEL_NAME: 'UNet'
   # IN_DIM: 3
@@ -35,7 +36,7 @@ MODEL:
 TRAIN:
   USE_GAN: True
   D_ITERS: 1
-  BATCH_SIZE: 24
+  BATCH_SIZE: 20
   #LOADER: crop # The loading way for training data, e.g., crop, resize, default; see ./dataset/load_data.py
   #CROP_SIZE: 768 # Set the crop size if LOADER==crop
   #RESIZE_SIZE: 384 # Set the resizing size if LOADER==crop
@@ -54,7 +55,7 @@ TEST:
   TEST_EPOCH: 'auto' # Input 'auto' for loading the latest model
   SAVE_IMG: False # The file type (e.g., jpg, png) for saving the output image; set False to avoid saving
   # LOAD_PATH: False # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated
-  LOAD_PATH: '.out_dir/tip/mynet/net_checkpoints/checkpoint_latest.tar' # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated
+  LOAD_PATH: '.out_dir/tip/FULL/net_checkpoints/checkpoint_latest.tar' # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated
   EVALUATION_METRIC: True # If True, calculate metrics
   EVALUATION_TIME: False # If True, calculate processing time per image; EVALUATION_METRIC will be deprecated for accurate statistics
   EVALUATION_COST: False #If True, calculate MACs and Parameters number

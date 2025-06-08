@@ -2,41 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from .unet import UNet
-
-
-class PatchDiscriminator(nn.Module):
-    def __init__(self, in_channels=3, num_features=64, num_layers=3):
-        super().__init__()
-        layers = [
-            nn.Conv2d(in_channels, num_features, 4, stride=2, padding=1),
-            nn.LeakyReLU(0.2, inplace=True)
-        ]
-        nf = num_features
-        for _ in range(1, num_layers):
-            layers += [
-                nn.Conv2d(nf, nf*2, 4, stride=2, padding=1),
-                nn.BatchNorm2d(nf*2),
-                nn.LeakyReLU(0.2, inplace=True)
-            ]
-            nf *= 2
-        layers += [
-            nn.Conv2d(nf, 1, 4, padding=1)
-        ]
-        self.model = nn.Sequential(*layers)
-        self._initialize_weights()
-
-    def forward(self, x):
-        return self.model(x)
-
-    def _initialize_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, a=0.2, mode='fan_in', nonlinearity='leaky_relu')
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.ones_(m.weight)
-                nn.init.zeros_(m.bias)
+from .utils import PatchDiscriminator
 
 
 class MyNet(nn.Module):

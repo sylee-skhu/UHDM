@@ -5,7 +5,7 @@ GENERAL:
   SEED: 123
   WORKER: 8
   SAVE_PREFIX: '.out_dir/tip'
-  EXP_NAME: 'mynet'
+  EXP_NAME: 'exp'
 
 DATA:
   DATA_TYPE: TIP # Please specify the type of the dataset (select from AIM/UHDM/FHDMi/TIP)
@@ -15,19 +15,19 @@ DATA:
 
 MODEL:
 # ESDNet configuration
-  # MODEL_NAME: 'ESDNet' # The model name, e.g., ESDNet, ESDNet-L
-  # EN_FEATURE_NUM: 48 # The initial channel number of dense blocks of encoder
-  # EN_INTER_NUM: 32 # The growth rate (intermediate channel number) of dense blocks of encoder
-  # DE_FEATURE_NUM: 64 # The initial channel number of dense blocks of decoder
-  # DE_INTER_NUM: 32 # The growth rate (intermediate channel number) of dense blocks of decoder
-  # SAM_NUMBER: 1 # The number of SAM for each encoder or decoder level; set 1 for our ESDNet, and 2 for ESDNet-L
+  MODEL_NAME: 'ESDNet' # The model name, e.g., ESDNet, ESDNet-L
+  EN_FEATURE_NUM: 48 # The initial channel number of dense blocks of encoder
+  EN_INTER_NUM: 32 # The growth rate (intermediate channel number) of dense blocks of encoder
+  DE_FEATURE_NUM: 64 # The initial channel number of dense blocks of decoder
+  DE_INTER_NUM: 32 # The growth rate (intermediate channel number) of dense blocks of decoder
+  SAM_NUMBER: 1 # The number of SAM for each encoder or decoder level; set 1 for our ESDNet, and 2 for ESDNet-L
 # UNet configuration
   # MODEL_NAME: 'UNet'
   # IN_DIM: 3
   # FEAT_DIM: 64
   # OUT_DIM: 3
 # MyNet configuration
- MODEL_NAME: 'MyNet' # The model name, e.g., MyNet, MyNet-L
+#  MODEL_NAME: 'MyNet' # The model name, e.g., MyNet, MyNet-L
 
 TRAIN:
   USE_GAN: False

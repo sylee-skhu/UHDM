@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from .utils import MultiGaussianDiffFusion
+from .utils import FreqEdgeFusionBlock
 
 
 class UNetEncoderBlock(nn.Module):
@@ -14,9 +16,20 @@ class UNetEncoderBlock(nn.Module):
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
         )
+        self._initialize_weights()
 
     def forward(self, x):
         return self.block(x)
+
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.ones_(m.weight)
+                nn.init.zeros_(m.bias)
 
 
 class UNetDecoderBlock(nn.Module):
@@ -31,6 +44,21 @@ class UNetDecoderBlock(nn.Module):
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
         )
+        self._initialize_weights()
+
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+            elif isinstance(m, nn.ConvTranspose2d):
+                nn.init.kaiming_normal_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.ones_(m.weight)
+                nn.init.zeros_(m.bias)
 
     def forward(self, x, enc_feat):
         x = self.up(x)
@@ -53,8 +81,15 @@ class UNet(nn.Module):
         self.enc4 = UNetEncoderBlock(num_features * 4, num_features * 8)
         self.pool = nn.MaxPool2d(2)
 
+        # MultiGaussianDiffFusion for feature fusion
+        self.skip1 = MultiGaussianDiffFusion(num_features)
+        self.skip2 = MultiGaussianDiffFusion(num_features * 2)
+        self.skip3 = MultiGaussianDiffFusion(num_features * 4)
+        self.skip4 = MultiGaussianDiffFusion(num_features * 8)
+
         # Bottleneck
-        self.bottleneck = UNetEncoderBlock(num_features * 8, num_features * 16)
+        # self.bottleneck = UNetEncoderBlock(num_features * 8, num_features * 16)
+        self.bottleneck = FreqEdgeFusionBlock(num_features * 8, num_features * 16)
 
         # Decoder
         self.dec4 = UNetDecoderBlock(num_features * 16, num_features * 8)
@@ -77,6 +112,11 @@ class UNet(nn.Module):
         e4 = self.enc4(self.pool(e3))
         # Bottleneck
         b = self.bottleneck(self.pool(e4))
+        # Skip connections with MultiGaussianDiffFusion
+        e1 = self.skip1(e1)
+        e2 = self.skip2(e2)
+        e3 = self.skip3(e3)
+        e4 = self.skip4(e4)
         # Decoder with skip connections
         d4 = self.dec4(b, e4)
         d3 = self.dec3(d4, e3)
@@ -89,11 +129,9 @@ class UNet(nn.Module):
         return [out_full, out_half, out_quarter]
 
     def _initialize_weights(self):
-        for m in self.modules():
-            if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d)):
-                nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.ones_(m.weight)
-                nn.init.zeros_(m.bias)
+        nn.init.kaiming_normal_(self.out_full.weight)
+        nn.init.zeros_(self.out_full.bias)
+        nn.init.kaiming_normal_(self.out_half.weight)
+        nn.init.zeros_(self.out_half.bias)
+        nn.init.kaiming_normal_(self.out_quarter.weight)
+        nn.init.zeros_(self.out_quarter.bias)

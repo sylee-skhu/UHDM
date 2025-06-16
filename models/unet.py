@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .utils import MultiGaussianDiffFusion
 from .utils import FreqEdgeFusionBlock
+from .utils import get_2d_positional_encoding
 
 
 class UNetEncoderBlock(nn.Module):
@@ -75,7 +76,7 @@ class UNet(nn.Module):
     def __init__(self, num_channels=3, num_features=64, num_out_channels=3):
         super().__init__()
         # Encoder
-        self.enc1 = UNetEncoderBlock(num_channels, num_features)
+        self.enc1 = UNetEncoderBlock(num_channels + 2, num_features)
         self.enc2 = UNetEncoderBlock(num_features, num_features * 2)
         self.enc3 = UNetEncoderBlock(num_features * 2, num_features * 4)
         self.enc4 = UNetEncoderBlock(num_features * 4, num_features * 8)
@@ -105,6 +106,9 @@ class UNet(nn.Module):
 
     def forward(self, data):
         x = data['in_img']
+        B, _, H, W = x.shape
+        pos_enc = get_2d_positional_encoding(B, H, W, device=x.device, dtype=x.dtype)
+        x = torch.cat([x, pos_enc], dim=1)   # (B, C+2, H, W)
         # Encoder
         e1 = self.enc1(x)
         e2 = self.enc2(self.pool(e1))

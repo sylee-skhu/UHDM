@@ -3,6 +3,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+def get_2d_positional_encoding(batch, height, width, device=None, dtype=None):
+    # x, y normalized coordinates [0, 1]
+    y_embed = torch.linspace(0, 1, steps=height, device=device, dtype=dtype).view(1, height, 1).expand(batch, height, width)
+    x_embed = torch.linspace(0, 1, steps=width, device=device, dtype=dtype).view(1, 1, width).expand(batch, height, width)
+    pos = torch.stack([y_embed, x_embed], dim=1)  # (B, 2, H, W)
+    return pos
+
+
 class PatchDiscriminator(nn.Module):
     def __init__(self, in_channels=3, num_features=64, num_layers=3):
         super().__init__()
@@ -157,15 +165,30 @@ class SobelEdgeAttention(nn.Module):
         # 3x3 Conv 적용
         self.pre_conv = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
 
-        # Sobel 필터
-        sobel_h = torch.tensor([[[-1, 0, 1],
-                                 [-2, 0, 2],
-                                 [-1, 0, 1]]], dtype=torch.float32)
-        sobel_v = torch.tensor([[[-1, -2, -1],
-                                 [0,  0,  0],
-                                 [1,  2,  1]]], dtype=torch.float32)
-        self.weight_h = nn.Parameter(sobel_h.repeat(channels, 1, 1, 1), requires_grad=False)
-        self.weight_v = nn.Parameter(sobel_v.repeat(channels, 1, 1, 1), requires_grad=False)
+        # 8방향 Sobel 커널 (오리지널 4방향 + 45/135도 대각선 2방향 + 역방향 2개)
+        kernels = torch.tensor([
+            [[-1, 0, 1],   # 0도 (수평)
+             [-2, 0, 2],
+             [-1, 0, 1]],
+
+            [[-1, -2, -1],  # 90도 (수직)
+             [0,  0,  0],
+             [1,  2,  1]],
+
+            [[-2, -1, 0],  # 45도
+             [-1, 0, 1],
+             [0, 1, 2]],
+
+            [[0, 1, 2],   # 135도
+             [-1, 0, 1],
+             [-2, -1, 0]],
+        ], dtype=torch.float32)  # (4, 3, 3)
+
+        # (4, 1, 3, 3) → (channels*4, 1, 3, 3)
+        kernels = kernels.unsqueeze(1)
+        self.kernels = nn.Parameter(
+            kernels.repeat(channels, 1, 1, 1), requires_grad=False
+        )
 
         # 1x1 conv for attention
         self.conv1x1 = nn.Conv2d(1, 1, kernel_size=1)
@@ -183,12 +206,16 @@ class SobelEdgeAttention(nn.Module):
         # 1. 3x3 Conv 적용
         x_conv = self.pre_conv(x)
 
-        # 2. Sobel gradient 연산
-        Gx = F.conv2d(x_conv, self.weight_h, bias=None, stride=1, padding=1, groups=self.channels)
-        Gy = F.conv2d(x_conv, self.weight_v, bias=None, stride=1, padding=1, groups=self.channels)
+        # 2. 4방향 Sobel
+        # (B, C, H, W) → (B, C*4, H, W) 각 채널마다 4개의 Sobel 필터 적용
+        edge_maps = F.conv2d(
+            x_conv, self.kernels, bias=None, stride=1, padding=1,
+            groups=self.channels
+        )  # shape: (B, C*4, H, W)
 
-        # 3. Edge map 계산
-        x_edge = torch.max(torch.abs(Gx), torch.abs(Gy))  # (B, C, H, W)
+        # 3. 각 채널별 4방향 gradient에서 abs max 취함
+        edge_maps = edge_maps.view(x.size(0), self.channels, 4, x.size(2), x.size(3))
+        x_edge = edge_maps.abs().max(dim=2)[0]  # (B, C, H, W)
 
         # 4. 채널 평균 & 최대값 풀링
         avg_pool = x_edge.mean(dim=1, keepdim=True)       # (B, 1, H, W)
@@ -217,12 +244,6 @@ class FreqEdgeFusionBlock(nn.Module):
             nn.ReLU(inplace=True),
         )
 
-        # Projection for residual if channels differ
-        if in_channels != out_channels:
-            self.proj = nn.Conv2d(in_channels, out_channels, 1)
-        else:
-            self.proj = nn.Identity()
-
         # 주파수/엣지 모듈
         self.freq_mod = FrequencyDomainModulator(out_channels)
         self.edge_att = SobelEdgeAttention(out_channels)
@@ -236,11 +257,6 @@ class FreqEdgeFusionBlock(nn.Module):
             elif isinstance(m, nn.BatchNorm2d):
                 nn.init.ones_(m.weight)
                 nn.init.zeros_(m.bias)
-        for m in self.proj.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out')
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
 
     def forward(self, x):
         # 1. 인코더
@@ -250,7 +266,6 @@ class FreqEdgeFusionBlock(nn.Module):
         x_freq = self.freq_mod(x_encoded)
         x_edge = self.edge_att(x_encoded)
 
-        # 3. 곱셈 및 스킵
-        res = self.proj(x)
-        out = x_encoded * x_freq * x_edge + res
+        # 3. Residual 연결
+        out = x_encoded * x_freq * x_edge + x_encoded
         return out

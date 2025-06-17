@@ -85,6 +85,29 @@ class MultiGaussianDiffFusion(nn.Module):
         return s_out
 
 
+class FreqEdgeFusionBlockV2(nn.Module):
+    def __init__(self, n_channels):
+        super().__init__()
+
+        # 주파수/엣지 모듈
+        self.freq_mod = FrequencyDomainModulator(n_channels)
+        self.edge_att = SobelEdgeAttention(n_channels)
+        self._initialize_weights()
+
+    def _initialize_weights(self):
+        pass
+
+    def forward(self, x):
+
+        # 2. 주파수/엣지 모듈
+        x_freq = self.freq_mod(x)
+        x_edge = self.edge_att(x)
+
+        # 3. Residual 연결
+        out = x * x_freq * x_edge + x
+        return out
+
+
 class FrequencyDomainModulator(nn.Module):
     def __init__(self, channels: int):
         super().__init__()

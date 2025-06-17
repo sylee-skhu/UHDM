@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from .utils import MultiGaussianDiffFusion
-from .utils import FreqEdgeFusionBlock
+from .utils import FreqEdgeFusionBlock, FreqEdgeFusionBlockV2
 from .utils import get_2d_positional_encoding
 
 
@@ -83,11 +83,14 @@ class UNet(nn.Module):
         self.pool = nn.MaxPool2d(2)
 
         # MultiGaussianDiffFusion for feature fusion
-        self.skip1 = MultiGaussianDiffFusion(num_features)
-        self.skip2 = MultiGaussianDiffFusion(num_features * 2)
-        self.skip3 = MultiGaussianDiffFusion(num_features * 4)
-        self.skip4 = MultiGaussianDiffFusion(num_features * 8)
-
+        self.skip1 = FreqEdgeFusionBlockV2(num_features)
+        self.skip2 = FreqEdgeFusionBlockV2(num_features * 2)
+        self.skip3 = FreqEdgeFusionBlockV2(num_features * 4)
+        self.skip4 = FreqEdgeFusionBlockV2(num_features * 8)
+        # self.skip1 = MultiGaussianDiffFusion(num_features)
+        # self.skip2 = MultiGaussianDiffFusion(num_features * 2)
+        # self.skip3 = MultiGaussianDiffFusion(num_features * 4)
+        # self.skip4 = MultiGaussianDiffFusion(num_features * 8)
         # Bottleneck
         # self.bottleneck = UNetEncoderBlock(num_features * 8, num_features * 16)
         self.bottleneck = FreqEdgeFusionBlock(num_features * 8, num_features * 16)

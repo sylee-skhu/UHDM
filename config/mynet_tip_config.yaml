@@ -7,7 +7,7 @@ GENERAL:
   SEED: 123
   WORKER: 8
   SAVE_PREFIX: '.out_dir/tip'
-  EXP_NAME: 'FULL4'
+  EXP_NAME: 'FULL5'
 
 DATA:
   DATA_TYPE: TIP # Please specify the type of the dataset (select from AIM/UHDM/FHDMi/TIP)
@@ -37,7 +37,7 @@ MODEL:
 TRAIN:
   USE_GAN: True
   D_ITERS: 1
-  BATCH_SIZE: 20
+  BATCH_SIZE: 12
   #LOADER: crop # The loading way for training data, e.g., crop, resize, default; see ./dataset/load_data.py
   #CROP_SIZE: 768 # Set the crop size if LOADER==crop
   #RESIZE_SIZE: 384 # Set the resizing size if LOADER==crop
@@ -56,7 +56,7 @@ TEST:
   TEST_EPOCH: 'auto' # Input 'auto' for loading the latest model
   SAVE_IMG: False # The file type (e.g., jpg, png) for saving the output image; set False to avoid saving
   # LOAD_PATH: False # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated
-  LOAD_PATH: '.out_dir/tip/FULL4/net_checkpoints/checkpoint_latest.tar' # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated
+  LOAD_PATH: '.out_dir/tip/FULL5/net_checkpoints/checkpoint_latest.tar' # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated
   EVALUATION_METRIC: True # If True, calculate metrics
   EVALUATION_TIME: False # If True, calculate processing time per image; EVALUATION_METRIC will be deprecated for accurate statistics
   EVALUATION_COST: False #If True, calculate MACs and Parameters number

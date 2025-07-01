@@ -150,9 +150,8 @@ def main():
 
     set_seed(args.SEED)
     # DataLoader
-    test_path = args.TEST_DATASET
     args.BATCH_SIZE = 1
-    TestImgLoader = create_dataset(args, data_path=test_path, mode='test', device=device)
+    TestImgLoader = create_dataset(args, data_path=args.TEST_DATASET, mode='test', device=device)
 
     # Model
     model = create_model(args).to(device)
@@ -167,6 +166,8 @@ def main():
 
     # Metric
     compute_metrics = None
+    if args.EVALUATION_COST:
+        calculate_cost(model, input_size=(1, 3, 256, 256))
     if args.EVALUATION_TIME:
         args.EVALUATION_METRIC = False
     if args.EVALUATION_METRIC:

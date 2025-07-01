@@ -3,11 +3,18 @@
 # FULL(skip+bottleneck): Avg. LPIPS=0.0711, PSNR=27.7646, SSIM=0.8998
 # FULL2(skip+bottleneck+PosEnc+Freqloss): Avg. LPIPS=0.0703, PSNR=27.8745, SSIM=0.8962
 # FULL4(skip+bottleneckV2+PosEnc): Avg. LPIPS=0.0673, PSNR=28.2967, SSIM=0.9026
+# FULL4(bottleskip+bottleneckV2+PosEnc): Avg. LPIPS=0.0649, PSNR=28.3304, SSIM=0.9010
+# FULL5(bottleskip+bottleneck+PosEnc+LearnableFreq): Avg. LPIPS=0.0627, PSNR=28.5896, SSIM=0.9028
+
+
+# UNET3P: 40epoch Avg. LPIPS=0.0875, PSNR=28.8581, SSIM=0.9042
+# UNET3P: 50epoch Avg. LPIPS=0.0850, PSNR=28.9742, SSIM=0.9062
+
 GENERAL:
   SEED: 123
   WORKER: 8
   SAVE_PREFIX: '.out_dir/tip'
-  EXP_NAME: 'FULL5'
+  EXP_NAME: 'UNET3P'
 
 DATA:
   DATA_TYPE: TIP # Please specify the type of the dataset (select from AIM/UHDM/FHDMi/TIP)
@@ -25,38 +32,38 @@ MODEL:
   # SAM_NUMBER: 1 # The number of SAM for each encoder or decoder level; set 1 for our ESDNet, and 2 for ESDNet-L
 # UNet configuration
   # MODEL_NAME: 'UNet'
-  # IN_DIM: 3
   # FEAT_DIM: 64
-  # OUT_DIM: 3
 # MyNet configuration
-  MODEL_NAME: 'MyNet' # The model name, e.g., MyNet, MyNet-L
-  CH_DIM: 3
+  # MODEL_NAME: 'MyUNet' # The model name, e.g., MyNet, MyNet-L
+  # FEAT_DIM: 64
+  MODEL_NAME: 'MyUnet3Plus'
   FEAT_DIM: 64
+
   
 
 TRAIN:
-  USE_GAN: True
+  USE_GAN: False
   D_ITERS: 1
-  BATCH_SIZE: 12
+  BATCH_SIZE: 6
   #LOADER: crop # The loading way for training data, e.g., crop, resize, default; see ./dataset/load_data.py
   #CROP_SIZE: 768 # Set the crop size if LOADER==crop
   #RESIZE_SIZE: 384 # Set the resizing size if LOADER==crop
   SAVE_ITER: 500 # Save training images/results at each SAVE_ITER*n iter
-  LOAD_EPOCH: False # If specify it, loading the corresponding model for resuming training
+  LOAD_EPOCH: 50 # If specify it, loading the corresponding model for resuming training
 # VGGPerceptual configuration
-  # LOSS_NAME: 'VGGPerceptual'
-  # LAM: 1 # The loss weight for L1 loss
-  # LAM_P: 1 # The loss weight for perceptual loss
+  LOSS_NAME: 'VGGPerceptual'
+  LAM: 1 # The loss weight for L1 loss
+  LAM_P: 1 # The loss weight for perceptual loss
 # MyLoss configuration
-  LOSS_NAME: 'MyLoss'
-  LAM_P: 2
-  LAM_ADV: 0.5
+  # LOSS_NAME: 'MyLoss'
+  # LAM_P: 2
+  # LAM_ADV: 0.5
 
 TEST:
   TEST_EPOCH: 'auto' # Input 'auto' for loading the latest model
   SAVE_IMG: False # The file type (e.g., jpg, png) for saving the output image; set False to avoid saving
   # LOAD_PATH: False # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated
-  LOAD_PATH: '.out_dir/tip/FULL5/net_checkpoints/checkpoint_latest.tar' # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated
+  LOAD_PATH: '.out_dir/tip/UNET3P/net_checkpoints/checkpoint_latest.tar' # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated
   EVALUATION_METRIC: True # If True, calculate metrics
   EVALUATION_TIME: False # If True, calculate processing time per image; EVALUATION_METRIC will be deprecated for accurate statistics
   EVALUATION_COST: False #If True, calculate MACs and Parameters number

@@ -75,14 +75,21 @@ def train_epoch(args, TrainImgLoader, model, loss_fn, optimizer_g, optimizer_d, 
     return lr, avg_train_loss_g, avg_train_loss_d, iters
 
 
-def load_checkpoint(model, optimizer_g, optimizer_d, load_epoch):
-    load_dir = args.NETS_DIR + '/checkpoint' + '_' + '%06d' % load_epoch + '.tar'
-    print('Loading pre-trained checkpoint %s' % load_dir)
-    ckpt = torch.load(load_dir, map_location='cpu')
-    model.load_state_dict(ckpt['state_dict'])
+def load_checkpoint(args, model, optimizer_g, optimizer_d):
+    load_path = args.NETS_DIR + '/checkpoint' + '_' + '%06d' % args.LOAD_EPOCH + '.tar'
+    print('Loading pre-trained checkpoint %s' % load_path)
+    ckpt = torch.load(load_path, map_location='cpu')
+
+    model_state_dict = ckpt['state_dict']
+    if isinstance(model, torch.nn.parallel.DistributedDataParallel):
+        model.module.load_state_dict(model_state_dict)
+    else:
+        model.load_state_dict(model_state_dict)
+
     optimizer_g.load_state_dict(ckpt['optimizer_g'])
     if optimizer_d is not None and 'optimizer_d' in ckpt:
         optimizer_d.load_state_dict(ckpt['optimizer_d'])
+
     learning_rate = ckpt['learning_rate']
     iters = ckpt['iters']
     print('Learning rate recorded from the checkpoint: %s' % str(learning_rate))
@@ -111,7 +118,7 @@ def main():
     set_seed(args.SEED)
 
     model = create_model(args).to(device)
-    model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank, find_unused_parameters=args.USE_GAN)
+    model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank, find_unused_parameters=True)
 
     if args.USE_GAN:
         optimizer_g = optim.Adam([{'params': model.module.G.parameters(), 'initial_lr': args.BASE_LR}], betas=(0.9, 0.999))
@@ -123,13 +130,11 @@ def main():
     learning_rate = args.BASE_LR
     iters = 0
     if args.LOAD_EPOCH:
-        learning_rate, iters = load_checkpoint(model, optimizer_g, optimizer_d, args.LOAD_EPOCH)
+        learning_rate, iters = load_checkpoint(args, model, optimizer_g, optimizer_d)
 
     loss_fn = create_loss(args).to(device)
 
-    train_path = args.TRAIN_DATASET
-
-    TrainImgLoader = create_dataset(args, data_path=train_path, mode='train', device=device)
+    TrainImgLoader = create_dataset(args, data_path=args.TRAIN_DATASET, mode='train', device=device)
 
     lr_scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
         optimizer_g, T_0=args.T_0, T_mult=args.T_MULT, eta_min=args.ETA_MIN,

@@ -12,10 +12,10 @@ def get_2d_positional_encoding(batch, height, width, device=None, dtype=None):
 
 
 class PatchDiscriminator(nn.Module):
-    def __init__(self, in_channels=3, num_features=64, num_layers=3):
+    def __init__(self, num_features=64, num_layers=3):
         super().__init__()
         layers = [
-            nn.Conv2d(in_channels, num_features, 4, stride=2, padding=1),
+            nn.Conv2d(3, num_features, 4, stride=2, padding=1),
             nn.LeakyReLU(0.2, inplace=True)
         ]
         nf = num_features
@@ -113,22 +113,23 @@ class FrequencyDomainModulator(nn.Module):
         super().__init__()
         self.channels = channels
 
-        # Learnable modulation scalars
-        self.alpha_low = nn.Parameter(torch.tensor(0.5))
-        self.alpha_high = nn.Parameter(torch.tensor(0.5))
+        # Learnable band thresholds (per channel)
+        self.thr_low = nn.Parameter(torch.ones(channels) * 0.5)    # lower bound
+        self.thr_high = nn.Parameter(torch.ones(channels) * 1.0)   # upper bound
+        self.temp = nn.Parameter(torch.ones(channels) * 10.0)      # sharpness
 
-        # Frequency-domain 1×1 convs operate on real+imag concatenated as 2C channels
-        self.freq_conv1 = nn.Conv2d(2*channels, 2*channels, kernel_size=1)
+        # Each band modulation parameter (per channel)
+        self.alpha_low = nn.Parameter(torch.zeros(channels))      # low-pass
+        self.alpha_band = nn.Parameter(torch.zeros(channels))     # band-pass
+        self.alpha_high = nn.Parameter(torch.zeros(channels))     # high-pass
+
+        self.freq_conv1 = nn.Conv2d(2*channels, 2*channels, 1)
         self.gelu = nn.GELU()
-        self.freq_conv2 = nn.Conv2d(2*channels, 2*channels, kernel_size=1)
-
-        # Spatial-domain 1×1 conv after inverse FFT
-        self.spatial_conv = nn.Conv2d(channels, channels, kernel_size=1)
-
+        self.freq_conv2 = nn.Conv2d(2*channels, 2*channels, 1)
+        self.spatial_conv = nn.Conv2d(channels, channels, 1)
         self._initialize_weights()
 
     def _initialize_weights(self):
-        # He initialization for 1x1 convs
         nn.init.kaiming_normal_(self.freq_conv1.weight, mode='fan_in')
         nn.init.kaiming_normal_(self.freq_conv2.weight, mode='fan_in')
         nn.init.kaiming_normal_(self.spatial_conv.weight, mode='fan_in')
@@ -139,45 +140,43 @@ class FrequencyDomainModulator(nn.Module):
         if self.spatial_conv.bias is not None:
             nn.init.zeros_(self.spatial_conv.bias)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: B×C×H×W
-        # 1. FFT to frequency domain
-        f = torch.fft.fft2(x, norm='ortho')  # complex tensor B×C×H×W
-
-        # 2. Magnitude spectrum
+    def forward(self, x):
+        # x: (B, C, H, W)
+        f = torch.fft.fft2(x, norm='ortho')
         m = torch.abs(f)
-        # 3. Mean amplitude spectrum
         m_mean = m.mean(dim=[-2, -1], keepdim=True)
 
-        # 4. Binary indicator masks (0 or 1)
-        mask_high = (m > m_mean).type_as(m)               # 1 where m > m_mean, else 0
-        mask_low = (m <= 0.5 * m_mean).type_as(m)        # 1 where m <= 0.5*m_mean, else 0
+        thr_low = self.thr_low.view(1, -1, 1, 1) * m_mean
+        thr_high = self.thr_high.view(1, -1, 1, 1) * m_mean
+        temp = self.temp.view(1, -1, 1, 1)
 
-        # 5. Modulate f with learnable scales
-        scale = 1 + self.alpha_low * mask_low + self.alpha_high * mask_high
+        # Soft masks
+        mask_low = torch.sigmoid(temp * (thr_low - m))              # low-pass
+        mask_high = torch.sigmoid(temp * (m - thr_high))            # high-pass
+        mask_band = (1.0 - mask_low) * (1.0 - mask_high)            # band-pass: 가운데만 1, 양쪽 0
+
+        # Modulation: weighted sum
+        scale = 1 \
+              + self.alpha_low.view(1, -1, 1, 1)  * mask_low \
+              + self.alpha_band.view(1, -1, 1, 1) * mask_band \
+              + self.alpha_high.view(1, -1, 1, 1) * mask_high
+
         f2 = f * scale
 
-        # 6. Frequency-domain convs: split into real & imag channels
         real = f2.real
         imag = f2.imag
-        freq_in = torch.cat([real, imag], dim=1)  # B×2C×H×W
+        freq_in = torch.cat([real, imag], dim=1)
         z = self.freq_conv1(freq_in)
         z = self.gelu(z)
         z = self.freq_conv2(z)
-
-        # Reconstruct complex tensor for inverse FFT
         real_z, imag_z = z.chunk(2, dim=1)
         f2_processed = torch.complex(real_z, imag_z)
 
-        # 7. Inverse FFT back to spatial domain
-        y = torch.fft.ifft2(f2_processed, norm='ortho').real  # B×C×H×W
-
-        # 8. Spatial conv + sigmoid activation
+        y = torch.fft.ifft2(f2_processed, norm='ortho').real
         f3 = torch.sigmoid(self.spatial_conv(y))
-
-        # 9. Modulate original input
         out = x * f3
         return out
+
 
 
 class SobelEdgeAttention(nn.Module):
@@ -292,3 +291,81 @@ class FreqEdgeFusionBlock(nn.Module):
         # 3. Residual 연결
         out = x_encoded * x_freq * x_edge + x_encoded
         return out
+
+class FrequencyDomainModulatorV2(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, num_patches: int = 2, num_heads: int = 4):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.num_patches = num_patches
+        self.num_heads = num_heads
+
+        # learnable modulation parameter for each head
+        self.alpha = nn.Parameter(torch.zeros(num_heads, out_channels))  # (H, C_out)
+
+        # QKV projection: (2*in_channels) → (2*out_channels)
+        self.q_proj = nn.Conv2d(2*in_channels, 2*out_channels, 1)
+        self.k_proj = nn.Conv2d(2*in_channels, 2*out_channels, 1)
+        self.v_proj = nn.Conv2d(2*in_channels, 2*out_channels, 1)
+        self.out_proj = nn.Conv2d(2*out_channels, 2*out_channels, 1)
+        self.spatial_conv = nn.Conv2d(out_channels, out_channels, 1)
+
+        self._initialize_weights()
+
+    def _initialize_weights(self):
+        for layer in [self.q_proj, self.k_proj, self.v_proj, self.out_proj, self.spatial_conv]:
+            nn.init.kaiming_normal_(layer.weight, mode='fan_in')
+            if layer.bias is not None:
+                nn.init.zeros_(layer.bias)
+
+    def forward(self, x):
+        # x: (B, in_channels, H, W)
+        B, C_in, H, W = x.shape
+        C_out = self.out_channels
+
+        # 1. FFT + real/imag concat
+        f = torch.fft.fft2(x, norm='ortho')                # (B, in_channels, H, W)
+        f_cat = torch.cat([f.real, f.imag], dim=1)         # (B, 2*in_channels, H, W)
+
+        # 2. Window partition
+        window_size_h = H // self.num_patches
+        window_size_w = W // self.num_patches
+        f_windows = f_cat.unfold(2, window_size_h, window_size_h).unfold(3, window_size_w, window_size_w)
+        B, Din, Nh, Nw, Wh, Ww = f_windows.shape
+        f_windows = f_windows.contiguous().view(B, Din, Nh*Nw, Wh*Ww)  # (B, 2*in_channels, Num_windows, Patch_size)
+
+        # 3. QKV projection per window (projection은 채널차 변환 포함)
+        # [B, 2*in_channels, ...] → [B, 2*out_channels, ...]
+        f_windows_flat = f_windows.view(B, Din, Nh*Nw*Wh, Ww)
+        q = self.q_proj(f_windows_flat).flatten(-2)  # (B, 2*out_channels, L)
+        k = self.k_proj(f_windows_flat).flatten(-2)
+        v = self.v_proj(f_windows_flat).flatten(-2)
+
+        Dout = 2 * self.out_channels
+        # 4. Multi-head split
+        head_dim = Dout // self.num_heads
+        q = q.view(B, self.num_heads, head_dim, -1)  # (B, H, D', L)
+        k = k.view(B, self.num_heads, head_dim, -1)
+        v = v.view(B, self.num_heads, head_dim, -1)
+
+        # 5. **Linear Attention**
+        q = F.elu(q) + 1
+        k = F.elu(k) + 1
+        kv = torch.einsum('bhdk,bhdl->bhkl', k, v)  # (B, H, D', D')
+        out = torch.einsum('bhdk,bhkl->bhdl', q, kv)  # (B, H, D', L)
+
+        # 6. concat heads, reshape back to window
+        out = out.contiguous().view(B, Dout, Nh*Nw, Wh*Ww)
+        out = out.view(B, Dout, Nh, Nw, Wh, Ww).permute(0, 1, 2, 4, 3, 5).contiguous()
+        out = out.view(B, Dout, H, W)
+
+        # 7. Output projection, IFFT, spatial mod
+        out_proj = self.out_proj(out)  # (B, 2*out_channels, H, W)
+        real, imag = out_proj.chunk(2, dim=1)  # 각각 (B, out_channels, H, W)
+        f2_processed = torch.complex(real, imag)
+        y = torch.fft.ifft2(f2_processed, norm='ortho').real  # (B, out_channels, H, W)
+
+        f3 = torch.sigmoid(self.spatial_conv(y))
+        # return x if C_in == C_out else F.interpolate(x, size=(H, W), mode='bilinear', align_corners=False) * f3
+        # 또는 bottleneck용이라면 그냥 return f3로 대체
+        return f3

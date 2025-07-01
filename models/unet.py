@@ -75,33 +75,25 @@ class UNetDecoderBlock(nn.Module):
 class UNet(nn.Module):
     def __init__(self, num_channels=3, num_features=64, num_out_channels=3):
         super().__init__()
-        # Encoder
+
         self.enc1 = UNetEncoderBlock(num_channels + 2, num_features)
         self.enc2 = UNetEncoderBlock(num_features, num_features * 2)
         self.enc3 = UNetEncoderBlock(num_features * 2, num_features * 4)
         self.enc4 = UNetEncoderBlock(num_features * 4, num_features * 8)
         self.pool = nn.MaxPool2d(2)
 
-        # MultiGaussianDiffFusion for feature fusion
         self.skip1 = FreqEdgeFusionBlockV2(num_features)
         self.skip2 = FreqEdgeFusionBlockV2(num_features * 2)
         self.skip3 = FreqEdgeFusionBlockV2(num_features * 4)
         self.skip4 = FreqEdgeFusionBlockV2(num_features * 8)
-        # self.skip1 = MultiGaussianDiffFusion(num_features)
-        # self.skip2 = MultiGaussianDiffFusion(num_features * 2)
-        # self.skip3 = MultiGaussianDiffFusion(num_features * 4)
-        # self.skip4 = MultiGaussianDiffFusion(num_features * 8)
-        # Bottleneck
-        # self.bottleneck = UNetEncoderBlock(num_features * 8, num_features * 16)
+
         self.bottleneck = FreqEdgeFusionBlock(num_features * 8, num_features * 16)
 
-        # Decoder
         self.dec4 = UNetDecoderBlock(num_features * 16, num_features * 8)
         self.dec3 = UNetDecoderBlock(num_features * 8, num_features * 4)
         self.dec2 = UNetDecoderBlock(num_features * 4, num_features * 2)
         self.dec1 = UNetDecoderBlock(num_features * 2, num_features)
 
-        # Output layers for each scale
         self.out_full = nn.Conv2d(num_features, num_out_channels, 1)
         self.out_half = nn.Conv2d(num_features * 2, num_out_channels, 1)
         self.out_quarter = nn.Conv2d(num_features * 4, num_out_channels, 1)

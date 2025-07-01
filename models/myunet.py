@@ -5,7 +5,7 @@ from .unet import UNet
 from .utils import PatchDiscriminator
 
 
-class MyNet(nn.Module):
+class MyUNet(nn.Module):
     def __init__(self, num_channels=3, num_features=64):
         super().__init__()
         self.G = UNet(
@@ -14,7 +14,6 @@ class MyNet(nn.Module):
             num_out_channels=num_channels
         )
         self.D = PatchDiscriminator(
-            in_channels=num_channels,
             num_features=num_features,
             num_layers=3
         )

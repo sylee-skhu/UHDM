@@ -121,9 +121,8 @@ def main():
     set_seed(args.SEED)
 
     # DataLoader
-    demo_path = args.DEMO_DATASET
     args.BATCH_SIZE = 1
-    DemoImgLoader = create_dataset(args, data_path=demo_path, mode='demo', device=device)
+    DemoImgLoader = create_dataset(args, data_path=args.DEMO_DATASET, mode='demo', device=device)
 
     # Model
     model = create_model(args).to(device)

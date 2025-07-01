@@ -17,15 +17,22 @@ class multi_VGGPerceptualLoss(torch.nn.Module):
         self.lam_p = lam_p
 
     def forward(self, outputs, gt1, feature_layers=[2]):
-        out1, out2, out3 = outputs
+        out1, out2, out3, out4, out5 = outputs[:5]
         gt2 = F.interpolate(gt1, scale_factor=0.5, mode='bilinear', align_corners=False)
         gt3 = F.interpolate(gt1, scale_factor=0.25, mode='bilinear', align_corners=False)
+        gt4 = F.interpolate(gt1, scale_factor=0.125, mode='bilinear', align_corners=False)
+        gt5 = F.interpolate(gt1, scale_factor=0.0625, mode='bilinear', align_corners=False)
+
+        # print(f"GT1 shape: {gt1.shape}, GT2 shape: {gt2.shape}, GT3 shape: {gt3.shape}")
+        # print(f"Out1 shape: {out1.shape}, Out2 shape: {out2.shape}, Out3 shape: {out3.shape}")
 
         loss1 = self.lam_p*self.loss_fn(out1, gt1, feature_layers=feature_layers) + self.lam*F.l1_loss(out1, gt1)
         loss2 = self.lam_p*self.loss_fn(out2, gt2, feature_layers=feature_layers) + self.lam*F.l1_loss(out2, gt2)
         loss3 = self.lam_p*self.loss_fn(out3, gt3, feature_layers=feature_layers) + self.lam*F.l1_loss(out3, gt3)
+        loss4 = self.lam_p*self.loss_fn(out4, gt4, feature_layers=feature_layers) + self.lam*F.l1_loss(out4, gt4)
+        loss5 = self.lam_p*self.loss_fn(out5, gt5, feature_layers=feature_layers) + self.lam*F.l1_loss(out5, gt5)
 
-        return loss1+loss2+loss3
+        return loss1+loss2+loss3+loss4+loss5
 
 
 class VGGPerceptualLoss(torch.nn.Module):

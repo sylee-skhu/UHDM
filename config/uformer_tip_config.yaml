@@ -1,10 +1,8 @@
-# UNET3P: Avg. LPIPS=0.0831, PSNR=28.9480, SSIM=0.9076
-
 GENERAL:
   SEED: 123
   WORKER: 8
   SAVE_PREFIX: '.out_dir/tip'
-  EXP_NAME: 'UNET3P'
+  EXP_NAME: 'Uformer_B'
 
 DATA:
   DATA_TYPE: TIP # Please specify the type of the dataset (select from AIM/UHDM/FHDMi/TIP)
@@ -13,21 +11,8 @@ DATA:
   DEMO_DATASET: './data_tip/demoData' # The demo data path, e.g., './data_tip/demoData'
 
 MODEL:
-# ESDNet configuration
-  # MODEL_NAME: 'ESDNet' # The model name, e.g., ESDNet, ESDNet-L
-  # EN_FEATURE_NUM: 48 # The initial channel number of dense blocks of encoder
-  # EN_INTER_NUM: 32 # The growth rate (intermediate channel number) of dense blocks of encoder
-  # DE_FEATURE_NUM: 64 # The initial channel number of dense blocks of decoder
-  # DE_INTER_NUM: 32 # The growth rate (intermediate channel number) of dense blocks of decoder
-  # SAM_NUMBER: 1 # The number of SAM for each encoder or decoder level; set 1 for our ESDNet, and 2 for ESDNet-L
-# UNet configuration
-  # MODEL_NAME: 'UNet'
-  # FEAT_DIM: 64
-# MyNet configuration
-  # MODEL_NAME: 'MyUNet' # The model name, e.g., MyNet, MyNet-L
-  # FEAT_DIM: 64
-  MODEL_NAME: 'MyUnet3Plus'
-  FEAT_DIM: 64
+  MODEL_NAME: 'MyUFormer'
+  ARCH: 'Uformer_B'
 
   
 
@@ -42,7 +27,7 @@ TRAIN:
   LOAD_EPOCH: 50 # If specify it, loading the corresponding model for resuming training
 # VGGPerceptual configuration
   LOSS_NAME: 'VGGPerceptual'
-  NUM_SCALES: 5
+  NUM_SCALES: 3
   LAM: 1 # The loss weight for L1 loss
   LAM_P: 1 # The loss weight for perceptual loss
 # MyLoss configuration
@@ -54,7 +39,7 @@ TEST:
   TEST_EPOCH: 'auto' # Input 'auto' for loading the latest model
   SAVE_IMG: False # The file type (e.g., jpg, png) for saving the output image; set False to avoid saving
   # LOAD_PATH: False # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated
-  LOAD_PATH: '.out_dir/tip/UNET3P/net_checkpoints/checkpoint_latest.tar' # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated
+  LOAD_PATH: '.out_dir/tip/Uformer_B/net_checkpoints/checkpoint_latest.tar' # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated
   EVALUATION_METRIC: True # If True, calculate metrics
   EVALUATION_TIME: False # If True, calculate processing time per image; EVALUATION_METRIC will be deprecated for accurate statistics
   EVALUATION_COST: False #If True, calculate MACs and Parameters number

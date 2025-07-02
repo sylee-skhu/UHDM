@@ -10,29 +10,22 @@ import os
 
 
 class multi_VGGPerceptualLoss(torch.nn.Module):
-    def __init__(self, lam=1, lam_p=1):
+    def __init__(self, num_scales=3, lam=1, lam_p=1):
         super(multi_VGGPerceptualLoss, self).__init__()
         self.loss_fn = VGGPerceptualLoss()
         self.lam = lam
         self.lam_p = lam_p
+        self.num_scales = num_scales
 
     def forward(self, outputs, gt1, feature_layers=[2]):
-        out1, out2, out3, out4, out5 = outputs[:5]
-        gt2 = F.interpolate(gt1, scale_factor=0.5, mode='bilinear', align_corners=False)
-        gt3 = F.interpolate(gt1, scale_factor=0.25, mode='bilinear', align_corners=False)
-        gt4 = F.interpolate(gt1, scale_factor=0.125, mode='bilinear', align_corners=False)
-        gt5 = F.interpolate(gt1, scale_factor=0.0625, mode='bilinear', align_corners=False)
+        outputs = outputs[:self.num_scales]
+        loss = 0.0
+        for i in range(len(outputs)):
+            out = outputs[i]
+            gt = F.interpolate(gt1, scale_factor=1/(2**i), mode='bilinear', align_corners=False)
+            loss += self.lam_p * self.loss_fn(out, gt, feature_layers=feature_layers) + self.lam * F.l1_loss(out, gt)
 
-        # print(f"GT1 shape: {gt1.shape}, GT2 shape: {gt2.shape}, GT3 shape: {gt3.shape}")
-        # print(f"Out1 shape: {out1.shape}, Out2 shape: {out2.shape}, Out3 shape: {out3.shape}")
-
-        loss1 = self.lam_p*self.loss_fn(out1, gt1, feature_layers=feature_layers) + self.lam*F.l1_loss(out1, gt1)
-        loss2 = self.lam_p*self.loss_fn(out2, gt2, feature_layers=feature_layers) + self.lam*F.l1_loss(out2, gt2)
-        loss3 = self.lam_p*self.loss_fn(out3, gt3, feature_layers=feature_layers) + self.lam*F.l1_loss(out3, gt3)
-        loss4 = self.lam_p*self.loss_fn(out4, gt4, feature_layers=feature_layers) + self.lam*F.l1_loss(out4, gt4)
-        loss5 = self.lam_p*self.loss_fn(out5, gt5, feature_layers=feature_layers) + self.lam*F.l1_loss(out5, gt5)
-
-        return loss1+loss2+loss3+loss4+loss5
+        return loss
 
 
 class VGGPerceptualLoss(torch.nn.Module):

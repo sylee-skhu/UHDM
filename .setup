@@ -12,3 +12,4 @@ pip install scikit-image
 pip install -U tensorboard
 pip install -U torch-tb-profiler
 pip install timm
+pip install einops

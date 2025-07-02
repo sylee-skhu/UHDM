@@ -6,14 +6,14 @@ from .utils import PatchDiscriminator
 
 
 class MyUNet3Plus(nn.Module):
-    def __init__(self, num_features=64):
+    def __init__(self):
         super().__init__()
         self.G = UNet3Plus(
             num_classes=3,
             deep_sup=True
         )
         self.D = PatchDiscriminator(
-            num_features=num_features,
+            num_features=64,
             num_layers=3
         )
         self._initialize_weights()

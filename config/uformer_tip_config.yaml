@@ -12,19 +12,19 @@ DATA:
 
 MODEL:
   MODEL_NAME: 'MyUFormer'
-  ARCH: 'Uformer_B'
+  ARCH: 'Uformer_T'
 
   
 
 TRAIN:
   USE_GAN: False
   D_ITERS: 1
-  BATCH_SIZE: 6
+  BATCH_SIZE: 12
   #LOADER: crop # The loading way for training data, e.g., crop, resize, default; see ./dataset/load_data.py
   #CROP_SIZE: 768 # Set the crop size if LOADER==crop
   #RESIZE_SIZE: 384 # Set the resizing size if LOADER==crop
   SAVE_ITER: 500 # Save training images/results at each SAVE_ITER*n iter
-  LOAD_EPOCH: 50 # If specify it, loading the corresponding model for resuming training
+  LOAD_EPOCH: False # If specify it, loading the corresponding model for resuming training
 # VGGPerceptual configuration
   LOSS_NAME: 'VGGPerceptual'
   NUM_SCALES: 3

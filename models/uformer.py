@@ -1271,6 +1271,7 @@ class Uformer(nn.Module):
 
     def forward(self, x, mask=None):
         # Input Projection
+        x = x['in_img']
         y = self.input_proj(x)
         y = self.pos_drop(y)
         #Encoder

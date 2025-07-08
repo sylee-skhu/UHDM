@@ -10,7 +10,143 @@ import numpy as np
 import time
 from torch import einsum
 
+class FrequencyDomainModulator(nn.Module):
+    def __init__(
+        self, 
+        channels: int, 
+        win_size: int,
+        use_channel_affine=True,             # 채널별 scale
+        use_band_mask=False,                 # 저/중/고 주파수 대역 modulation
+        use_spatial_gate=False,              # Spatial Gate
+        use_freq_conv=False,                 # 주파수 도메인 conv
+        norm_type=None                      # None, 'layer', 'instance'
+    ):
+        """
+        Args:
+            channels: feature channel dimension (C)
+            win_size: window 크기 (ex. 8)
+            use_channel_affine: 채널별 learnable scale
+            use_band_mask: Band별(alpha_low, alpha_mid, alpha_high) modulation 사용 여부
+            use_spatial_gate: iFFT후 spatial gate 곱 (sigmoid(Conv))
+            use_freq_conv: FFT 후 1x1 conv 적용
+            norm_type: None, 'layer', 'instance'
+        """
+        super().__init__()
+        self.channels = channels
+        self.win_size = win_size
+        self.use_channel_affine = use_channel_affine
+        self.use_band_mask = use_band_mask
+        self.use_spatial_gate = use_spatial_gate
+        self.use_freq_conv = use_freq_conv
 
+        # Channel Affine
+        if use_channel_affine:
+            self.alpha_real = nn.Parameter(torch.zeros(channels))
+            self.alpha_imag = nn.Parameter(torch.zeros(channels))
+
+        # Band Mask Option (low/mid/high)
+        if use_band_mask:
+            self.thr_low = nn.Parameter(torch.ones(channels) * 0.2)    # lower ratio
+            self.thr_high = nn.Parameter(torch.ones(channels) * 0.6)   # upper ratio
+            self.temp = nn.Parameter(torch.ones(channels) * 8.0)
+            self.alpha_low = nn.Parameter(torch.zeros(channels))
+            self.alpha_mid = nn.Parameter(torch.zeros(channels))
+            self.alpha_high = nn.Parameter(torch.zeros(channels))
+
+        # 주파수 도메인 conv (real/imag concat)
+        if use_freq_conv:
+            self.freq_conv = nn.Conv2d(2*channels, 2*channels, 1)
+            self.freq_act = nn.GELU()
+
+        # Spatial Gate
+        if use_spatial_gate:
+            self.spatial_conv = nn.Conv2d(channels, channels, 1)
+        
+        # Normalization
+        if norm_type == 'layer':
+            self.norm = nn.LayerNorm(channels)
+        elif norm_type == 'instance':
+            self.norm = nn.InstanceNorm2d(channels)
+        else:
+            self.norm = None
+
+    def forward(self, x):
+        """
+        x: [B, N, C] or [B, C, win, win]
+        """
+        if x.dim() == 3:
+            B, N, C = x.shape
+            win = self.win_size
+            x = x.transpose(1,2).contiguous().view(B, C, win, win)
+        else:
+            B, C, win, win_ = x.shape
+            assert win == win_
+
+        # 1. FFT
+        f = torch.fft.fft2(x, norm='ortho')    # (B, C, win, win)
+        real, imag = f.real, f.imag
+
+        # 2. Channel Affine (if enabled)
+        if self.use_channel_affine:
+            alpha_real = self.alpha_real.view(1, -1, 1, 1)
+            alpha_imag = self.alpha_imag.view(1, -1, 1, 1)
+            real = real * (1 + alpha_real)
+            imag = imag * (1 + alpha_imag)
+
+        # 3. Band-wise Mask (if enabled)
+        if self.use_band_mask:
+            # compute freq radius
+            device = x.device
+            wx, wy = torch.meshgrid(
+                torch.linspace(-1, 1, win, device=device),
+                torch.linspace(-1, 1, win, device=device)
+            )
+            freq_radius = torch.sqrt(wx**2 + wy**2)[None, None, :, :]  # (1,1,win,win)
+
+            thr_low = self.thr_low.view(1, -1, 1, 1)
+            thr_high = self.thr_high.view(1, -1, 1, 1)
+            temp = self.temp.view(1, -1, 1, 1)
+
+            mask_low = torch.sigmoid(temp * (thr_low - freq_radius))
+            mask_high = torch.sigmoid(temp * (freq_radius - thr_high))
+            mask_mid = (1.0 - mask_low) * (1.0 - mask_high)
+            # band modulation
+            scale = 1 \
+                + self.alpha_low.view(1, -1, 1, 1) * mask_low \
+                + self.alpha_mid.view(1, -1, 1, 1) * mask_mid \
+                + self.alpha_high.view(1, -1, 1, 1) * mask_high
+            real = real * scale
+            imag = imag * scale
+
+        # 4. Frequency Conv (if enabled)
+        if self.use_freq_conv:
+            freq = torch.cat([real, imag], dim=1)  # (B, 2C, win, win)
+            freq = self.freq_act(self.freq_conv(freq))
+            real, imag = freq.chunk(2, dim=1)
+
+        # 5. iFFT
+        f_mod = torch.complex(real, imag)
+        x_mod = torch.fft.ifft2(f_mod, norm='ortho').real  # (B, C, win, win)
+
+        # 6. Spatial Gate (if enabled)
+        if self.use_spatial_gate:
+            spatial_att = torch.sigmoid(self.spatial_conv(x_mod))
+            x_mod = x_mod * spatial_att
+
+        # 7. Normalization (if enabled)
+        if self.norm is not None:
+            if isinstance(self.norm, nn.LayerNorm):
+                # [B, C, win, win] -> [B, win, win, C]
+                x_mod = x_mod.permute(0,2,3,1)
+                x_mod = self.norm(x_mod)
+                x_mod = x_mod.permute(0,3,1,2)
+            else: # InstanceNorm2d
+                x_mod = self.norm(x_mod)
+
+        # 8. reshape back
+        x_mod = x_mod.view(B, C, win*win).transpose(1,2).contiguous()
+        return x_mod
+    
 class FastLeFF(nn.Module):
     
     def __init__(self, dim=32, hidden_dim=128, act_layer=nn.GELU,drop = 0.):
@@ -851,7 +987,7 @@ class LeWinTransformerBlock(nn.Module):
     def __init__(self, dim, input_resolution, num_heads, win_size=8, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm,token_projection='linear',token_mlp='leff',
-                 modulator=False,cross_modulator=False):
+                 modulator=False,cross_modulator=False,freq_modulator=False):
         super().__init__()
         self.dim = dim
         self.input_resolution = input_resolution
@@ -869,6 +1005,11 @@ class LeWinTransformerBlock(nn.Module):
             self.modulator = nn.Embedding(win_size*win_size, dim) # modulator
         else:
             self.modulator = None
+
+        if freq_modulator:
+            self.freq_modulator = FrequencyDomainModulator(dim)
+        else:
+            self.freq_modulator = None
 
         if cross_modulator:
             self.cross_modulator = nn.Embedding(win_size*win_size, dim) # cross_modulator
@@ -962,14 +1103,21 @@ class LeWinTransformerBlock(nn.Module):
         x_windows = window_partition(shifted_x, self.win_size)  # nW*B, win_size, win_size, C  N*C->C
         x_windows = x_windows.view(-1, self.win_size * self.win_size, C)  # nW*B, win_size*win_size, C
 
+        x_mod = x_windows
+        x_freq = x_windows
+
         # with_modulator
         if self.modulator is not None:
-            wmsa_in = self.with_pos_embed(x_windows,self.modulator.weight)
-        else:
-            wmsa_in = x_windows
+            x_mod = self.with_pos_embed(x_mod,self.modulator.weight)
+
+        # with_freq_modulator
+        if self.freq_modulator is not None:
+            x_freq = self.freq_modulator(x_freq)
+
+        x_windows = x_mod + x_freq
 
         # W-MSA/SW-MSA
-        attn_windows = self.attn(wmsa_in, mask=attn_mask)  # nW*B, win_size*win_size, C
+        attn_windows = self.attn(x_windows, mask=attn_mask)  # nW*B, win_size*win_size, C
 
         # merge windows
         attn_windows = attn_windows.view(-1, self.win_size, self.win_size, C)

@@ -1,8 +1,13 @@
+# T: 50epoch: Avg. LPIPS=0.0736, PSNR=29.9730, SSIM=0.9167
+# TF: 50epoch: Avg. LPIPS=0.0731, PSNR=29.9839, SSIM=0.9169
+
+# TF: 60epoch: Avg. LPIPS=0.0725, PSNR=30.0862, SSIM=0.9185
+# TF: 70epoch: Avg. LPIPS=0.0708, PSNR=30.1332, SSIM=0.9190
 GENERAL:
   SEED: 123
   WORKER: 8
   SAVE_PREFIX: '.out_dir/tip'
-  EXP_NAME: 'Uformer_B'
+  EXP_NAME: 'Uformer_BF'
 
 DATA:
   DATA_TYPE: TIP # Please specify the type of the dataset (select from AIM/UHDM/FHDMi/TIP)
@@ -12,14 +17,14 @@ DATA:
 
 MODEL:
   MODEL_NAME: 'MyUFormer'
-  ARCH: 'Uformer_T'
+  ARCH: 'Uformer_B'
 
   
 
 TRAIN:
   USE_GAN: False
   D_ITERS: 1
-  BATCH_SIZE: 12
+  BATCH_SIZE: 4
   #LOADER: crop # The loading way for training data, e.g., crop, resize, default; see ./dataset/load_data.py
   #CROP_SIZE: 768 # Set the crop size if LOADER==crop
   #RESIZE_SIZE: 384 # Set the resizing size if LOADER==crop
@@ -36,10 +41,11 @@ TRAIN:
   # LAM_ADV: 0.5
 
 TEST:
+  # TEST_EPOCH: 50 # Input 'auto' for loading the latest model
   TEST_EPOCH: 'auto' # Input 'auto' for loading the latest model
   SAVE_IMG: False # The file type (e.g., jpg, png) for saving the output image; set False to avoid saving
   # LOAD_PATH: False # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated
-  LOAD_PATH: '.out_dir/tip/Uformer_B/net_checkpoints/checkpoint_latest.tar' # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated
+  LOAD_PATH: '.out_dir/tip/Uformer_BF/net_checkpoints/checkpoint_latest.tar' # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated
   EVALUATION_METRIC: True # If True, calculate metrics
   EVALUATION_TIME: False # If True, calculate processing time per image; EVALUATION_METRIC will be deprecated for accurate statistics
   EVALUATION_COST: False #If True, calculate MACs and Parameters number

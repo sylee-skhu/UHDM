@@ -14,7 +14,7 @@ class FrequencyDomainModulator(nn.Module):
     def __init__(
         self, 
         channels: int, 
-        win_size: int,
+        win_size=8,
         use_channel_affine=True,             # 채널별 scale
         use_band_mask=False,                 # 저/중/고 주파수 대역 modulation
         use_spatial_gate=False,              # Spatial Gate
@@ -987,7 +987,7 @@ class LeWinTransformerBlock(nn.Module):
     def __init__(self, dim, input_resolution, num_heads, win_size=8, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm,token_projection='linear',token_mlp='leff',
-                 modulator=False,cross_modulator=False,freq_modulator=False):
+                 modulator=False,cross_modulator=False,freq_modulator=True):
         super().__init__()
         self.dim = dim
         self.input_resolution = input_resolution

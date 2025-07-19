@@ -3,6 +3,11 @@
 
 # TF: 60epoch: Avg. LPIPS=0.0725, PSNR=30.0862, SSIM=0.9185
 # TF: 70epoch: Avg. LPIPS=0.0708, PSNR=30.1332, SSIM=0.9190
+
+# BF: 20epoch: Avg. LPIPS=0.0659, PSNR=30.6312, SSIM=0.9244
+# BF: 30epoch: Avg. LPIPS=0.0638, PSNR=30.8093, SSIM=0.9267
+# BF: 40epoch: Avg. LPIPS=0.0619, PSNR=30.8985, SSIM=0.9275
+# BF: 50epoch: Avg. LPIPS=0.0600, PSNR=30.9419, SSIM=0.9283
 GENERAL:
   SEED: 123
   WORKER: 8
@@ -41,11 +46,11 @@ TRAIN:
   # LAM_ADV: 0.5
 
 TEST:
-  # TEST_EPOCH: 50 # Input 'auto' for loading the latest model
-  TEST_EPOCH: 'auto' # Input 'auto' for loading the latest model
+  TEST_EPOCH: 50 # Input 'auto' for loading the latest model
+  # TEST_EPOCH: 'auto' # Input 'auto' for loading the latest model
   SAVE_IMG: False # The file type (e.g., jpg, png) for saving the output image; set False to avoid saving
-  # LOAD_PATH: False # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated
-  LOAD_PATH: '.out_dir/tip/Uformer_BF/net_checkpoints/checkpoint_latest.tar' # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated
+  LOAD_PATH: False # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated
+  # LOAD_PATH: '.out_dir/tip/Uformer_BF/net_checkpoints/checkpoint_latest.tar' # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated
   EVALUATION_METRIC: True # If True, calculate metrics
   EVALUATION_TIME: False # If True, calculate processing time per image; EVALUATION_METRIC will be deprecated for accurate statistics
   EVALUATION_COST: False #If True, calculate MACs and Parameters number

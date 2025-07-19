@@ -26,6 +26,9 @@ class MyUFormer(nn.Module):
     def _initialize_weights(self):
         pass
 
+    def flops(self):
+        return self.G.flops()
+
 def get_arch(arch):
 
     if arch == 'Uformer_T':

@@ -14,7 +14,7 @@ class FrequencyDomainModulator(nn.Module):
     def __init__(
         self, 
         channels: int, 
-        win_size: int,
+        win_size=8,
         use_channel_affine=True,             # 채널별 scale
         use_band_mask=False,                 # 저/중/고 주파수 대역 modulation
         use_spatial_gate=False,              # Spatial Gate
@@ -147,6 +147,34 @@ class FrequencyDomainModulator(nn.Module):
         x_mod = x_mod.view(B, C, win*win).transpose(1,2).contiguous()
         return x_mod
     
+    def flops(self, win_h: int, win_w: int):
+        # B=1, C=channels, N=win_h*win_w
+        C = self.channels
+        N = win_h * win_w
+
+        # 1) FFT2 + iFFT2 cost ~ 5·N·log2(N) complex ops each,
+        #    each complex op ≃ 4 real MACs → total ~ 2 * 5 * N log2 N * 4 * C
+        fft_ops = 2 * 5 * N * math.log2(N) * 4 * C
+
+        # 2) Channel‐affine: if enabled, 2 multiplies per element
+        affine = 2 * N * C if self.use_channel_affine else 0
+
+        # 3) Band‐mask: approx 3 multiplies per element if enabled
+        band   = 3 * N * C if self.use_band_mask    else 0
+
+        # 4) 1×1 freq‐conv: if enabled, 2·C·N MACs (real+imag)
+        freqcv = 2 * C * N if self.use_freq_conv    else 0
+
+        # 5) Spatial gate: one 1×1 conv (C·N) + one sigmoid+element‐wise mul (C·N)
+        spgate = 2 * C * N if self.use_spatial_gate else 0
+
+        # 6) Norm: layernorm is ~2·C·N MACs; instance norm similar
+        norm   = 2 * C * N if self.norm is not None else 0
+
+        total = fft_ops + affine + band + freqcv + spgate + norm
+        return int(total)
+
+
 class FastLeFF(nn.Module):
     
     def __init__(self, dim=32, hidden_dim=128, act_layer=nn.GELU,drop = 0.):
@@ -987,7 +1015,7 @@ class LeWinTransformerBlock(nn.Module):
     def __init__(self, dim, input_resolution, num_heads, win_size=8, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm,token_projection='linear',token_mlp='leff',
-                 modulator=False,cross_modulator=False,freq_modulator=False):
+                 modulator=False,cross_modulator=False,freq_modulator=True):
         super().__init__()
         self.dim = dim
         self.input_resolution = input_resolution
@@ -1110,14 +1138,19 @@ class LeWinTransformerBlock(nn.Module):
         if self.modulator is not None:
             x_mod = self.with_pos_embed(x_mod,self.modulator.weight)
 
+
+        # with_modulator
+        if self.modulator is not None:
+            wmsa_in = self.with_pos_embed(x_windows,self.modulator.weight)
+        else:
+            wmsa_in = x_windows
+
         # with_freq_modulator
         if self.freq_modulator is not None:
-            x_freq = self.freq_modulator(x_freq)
-
-        x_windows = x_mod + x_freq
+            wmsa_in = wmsa_in + self.freq_modulator(x_freq)
 
         # W-MSA/SW-MSA
-        attn_windows = self.attn(x_windows, mask=attn_mask)  # nW*B, win_size*win_size, C
+        attn_windows = self.attn(wmsa_in, mask=attn_mask)  # nW*B, win_size*win_size, C
 
         # merge windows
         attn_windows = attn_windows.view(-1, self.win_size, self.win_size, C)
@@ -1146,6 +1179,13 @@ class LeWinTransformerBlock(nn.Module):
 
         # norm1
         flops += self.dim * H * W
+
+        if self.freq_modulator is not None:
+            # number of windows
+            nW = (H * W) // (self.win_size * self.win_size)
+            # each window is size win_size×win_size
+            flops += nW * self.freq_modulator.flops(self.win_size, self.win_size)
+            
         # W-MSA/SW-MSA
         flops += self.attn.flops(H, W)
         # norm2

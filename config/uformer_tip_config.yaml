@@ -8,6 +8,9 @@
 # BF: 30epoch: Avg. LPIPS=0.0638, PSNR=30.8093, SSIM=0.9267
 # BF: 40epoch: Avg. LPIPS=0.0619, PSNR=30.8985, SSIM=0.9275
 # BF: 50epoch: Avg. LPIPS=0.0600, PSNR=30.9419, SSIM=0.9283
+# BF: 60epoch: Avg. LPIPS=0.0591, PSNR=30.9683, SSIM=0.9286
+# BF: 70epoch: Avg. LPIPS=0.0577, PSNR=30.9696, SSIM=0.9287
+
 GENERAL:
   SEED: 123
   WORKER: 8
@@ -46,7 +49,7 @@ TRAIN:
   # LAM_ADV: 0.5
 
 TEST:
-  TEST_EPOCH: 50 # Input 'auto' for loading the latest model
+  TEST_EPOCH: 60 # Input 'auto' for loading the latest model
   # TEST_EPOCH: 'auto' # Input 'auto' for loading the latest model
   SAVE_IMG: False # The file type (e.g., jpg, png) for saving the output image; set False to avoid saving
   LOAD_PATH: False # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated

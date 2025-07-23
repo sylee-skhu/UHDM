@@ -1,0 +1,67 @@
+# T: 50epoch: Avg. LPIPS=0.0736, PSNR=29.9730, SSIM=0.9167
+# TF: 50epoch: Avg. LPIPS=0.0731, PSNR=29.9839, SSIM=0.9169
+
+# TF: 60epoch: Avg. LPIPS=0.0725, PSNR=30.0862, SSIM=0.9185
+# TF: 70epoch: Avg. LPIPS=0.0708, PSNR=30.1332, SSIM=0.9190
+
+# BF: 20epoch: Avg. LPIPS=0.0659, PSNR=30.6312, SSIM=0.9244
+# BF: 30epoch: Avg. LPIPS=0.0638, PSNR=30.8093, SSIM=0.9267
+# BF: 40epoch: Avg. LPIPS=0.0619, PSNR=30.8985, SSIM=0.9275
+# BF: 50epoch: Avg. LPIPS=0.0600, PSNR=30.9419, SSIM=0.9283
+# BF: 60epoch: Avg. LPIPS=0.0591, PSNR=30.9683, SSIM=0.9286
+# BF: 70epoch: Avg. LPIPS=0.0577, PSNR=30.9696, SSIM=0.9287
+
+GENERAL:
+  SEED: 123
+  WORKER: 8
+  SAVE_PREFIX: '.out_dir/fhdmi'
+  EXP_NAME: 'Uformer_TF'
+
+DATA:
+  DATA_TYPE: FHDMi # Please specify the type of the dataset (select from AIM/UHDM/FHDMi/TIP)
+  TRAIN_DATASET: './data_fhdmi/train' # The training data path, e.g., './data_tip/trainData'
+  TEST_DATASET: './data_fhdmi/test' # The test data path, e.g., './data_tip/testData'
+  DEMO_DATASET: './data_fhdmi/demo' # The demo data path, e.g., './data_tip/demoData'
+
+MODEL:
+  MODEL_NAME: 'MyUFormer'
+  ARCH: 'Uformer_T'
+
+  
+
+TRAIN:
+  USE_GAN: False
+  D_ITERS: 1
+  BATCH_SIZE: 3
+  LOADER: crop # The loading way for training data, e.g., crop, resize, default; see ./dataset/load_data.py
+  CROP_SIZE: 512 # Set the crop size if LOADER==crop
+  RESIZE_SIZE: 384 # Set the resizing size if LOADER==crop
+  SAVE_ITER: 500 # Save training images/results at each SAVE_ITER*n iter
+  LOAD_EPOCH: 70 # If specify it, loading the corresponding model for resuming training
+# VGGPerceptual configuration
+  LOSS_NAME: 'VGGPerceptual'
+  NUM_SCALES: 3
+  LAM: 1 # The loss weight for L1 loss
+  LAM_P: 1 # The loss weight for perceptual loss
+# MyLoss configuration
+  # LOSS_NAME: 'MyLoss'
+  # LAM_P: 2
+  # LAM_ADV: 0.5
+
+TEST:
+  # TEST_EPOCH: 60 # Input 'auto' for loading the latest model
+  TEST_EPOCH: 'auto' # Input 'auto' for loading the latest model
+  SAVE_IMG: False # The file type (e.g., jpg, png) for saving the output image; set False to avoid saving
+  # LOAD_PATH: False # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated
+  LOAD_PATH: '.out_dir/fhdmi/Uformer_TF/net_checkpoints/checkpoint_latest.tar' # If specify a load path for a checkpoint, TEST_EPOCH will be deprecated
+  EVALUATION_METRIC: True # If True, calculate metrics
+  EVALUATION_TIME: False # If True, calculate processing time per image; EVALUATION_METRIC will be deprecated for accurate statistics
+  EVALUATION_COST: False #If True, calculate MACs and Parameters number
+
+SOLVER:
+  EPOCHS: 150 # The total training epochs
+  T_0: 50 # The total epochs for the first learning cycle (learning rate warms up then)
+  T_MULT: 1 # The learning cycle would be (T_0, T_0*T_MULT, T_0*T_MULT^2, T_0*T_MULT^3, ...)
+  ETA_MIN: 0.000001 # Initial learning rate in each learning cycle
+  BASE_LR: 0.0002 # Learning rate in the end of each learning cycle
+
